@@ -1,1 +1,6 @@
-Ki54Y29kZXByb2oKYnVpbGQvCkRlcml2ZWREYXRhLwpQYXlsb2FkLwoqLmlwYQouRFNfU3RvcmUK
+*.xcodeproj
+build/
+DerivedData/
+Payload/
+*.ipa
+.DS_Store
