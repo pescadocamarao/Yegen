@@ -26,8 +26,10 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.seidao.yegen
         PRODUCT_NAME: Yegen
         SWIFT_VERSION: "5.9"
-        MARKETING_VERSION: "1.0.4"
+        MARKETING_VERSION: "1.0.5"
         CURRENT_PROJECT_VERSION: "1"
+        GENERATE_INFOPLIST_FILE: "NO"
+        INFOPLIST_FILE: Sources/Yegen/Info.plist
         TARGETED_DEVICE_FAMILY: "1"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ENABLE_PREVIEWS: "YES"
