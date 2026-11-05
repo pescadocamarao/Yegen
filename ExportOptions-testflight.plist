@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Método atual pro Xcode de hoje: "app-store-connect"
+	     (o valor antigo "app-store" foi aposentado). -->
+	<key>method</key>
+	<string>app-store-connect</string>
+	<!-- Assinatura automática: a Apple cria certificado e perfis via API. -->
+	<key>signingStyle</key>
+	<string>automatic</string>
+	<!-- Team ID da conta — o workflow troca TEAM_ID_AQUI pelo valor real. -->
+	<key>teamID</key>
+	<string>TEAM_ID_AQUI</string>
+	<!-- false = nós controlamos versão e nº da build (o workflow usa o
+	     nº da run como build), o Xcode não mexe sozinho. -->
+	<key>manageAppVersionAndBuildNumber</key>
+	<false/>
+	<key>stripSwiftSymbols</key>
+	<true/>
+	<!-- Com assinatura automática, nenhum perfil manual é declarado. -->
+	<key>provisioningProfiles</key>
+	<dict/>
+</dict>
+</plist>
