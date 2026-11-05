@@ -457,7 +457,7 @@ enum Engine {
 
     private static func detectTags(doc: Document, list: ListAnalysis?, origin: String,
                                    result: inout DetailAnalysis) {
-        let detailShape = list?.idCodeSample.map { shape(of: $0) } ?? ""
+        let detailShape = list.map { shape(of: $0.idCodeSample) } ?? ""
         var groups: [String: [Element]] = [:]
         for a in HTMLKit.select(doc, "a") {
             let href = a.attrOrEmpty("href")
