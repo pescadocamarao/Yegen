@@ -102,6 +102,45 @@ jobs:
       # ROTA TESTFLIGHT — só roda com enviar_testflight = true (manual)
       # ======================================================================
 
+      # Bloco 0 — conferência rápida dos segredos: imprime só COMPRIMENTOS
+      # (nunca os valores) e falha na largada se algum segredo estiver
+      # ausente, antes de gastar a build inteira pra descobrir no archive.
+      - name: "TestFlight 0 — Conferir segredos"
+        if: ${{ inputs.enviar_testflight }}
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          TEAM_ID: ${{ secrets.TEAM_ID }}
+          ASC_KEY_BASE64: ${{ secrets.ASC_KEY_BASE64 }}
+        run: |
+          falhou=0
+          conferir() {
+            nome="$1"; valor="$2"; esperado="$3"
+            tam=${#valor}
+            echo "$nome: $tam caracteres"
+            if [[ $tam -eq 0 ]]; then
+              echo "::error::SEGREDO AUSENTE: $nome — cadastrar em Settings → Secrets and variables → Actions → Repository secrets"
+              falhou=1
+            elif [[ $tam -ne $esperado ]]; then
+              echo "::warning::$nome com tamanho inesperado: $tam caracteres (esperado: $esperado) — confira o valor cadastrado"
+            fi
+          }
+          conferir "ASC_KEY_ID" "$ASC_KEY_ID" 10
+          conferir "ASC_ISSUER_ID" "$ASC_ISSUER_ID" 36
+          conferir "TEAM_ID" "$TEAM_ID" 10
+          echo "ASC_KEY_BASE64: ${#ASC_KEY_BASE64} caracteres"
+          if [[ ${#ASC_KEY_BASE64} -eq 0 ]]; then
+            echo "::error::SEGREDO AUSENTE: ASC_KEY_BASE64 — cadastrar em Settings → Secrets and variables → Actions → Repository secrets"
+            falhou=1
+          elif [[ ${#ASC_KEY_BASE64} -le 100 ]]; then
+            echo "::warning::ASC_KEY_BASE64 curto demais: ${#ASC_KEY_BASE64} caracteres (esperado: mais de 100) — confira o valor cadastrado"
+          fi
+          if [[ $falhou -ne 0 ]]; then
+            echo "Abortando antes da build: cadastre os segredos ausentes e dispare de novo."
+            exit 1
+          fi
+          echo "Segredos presentes — seguindo pra rota TestFlight."
+
       # Bloco 1 — grava o .p8 onde o xcodebuild (-authenticationKeyPath) e o
       # altool (busca automática em ~/.appstoreconnect/private_keys) acham.
       - name: "TestFlight 1 — Preparar chave de API do App Store Connect"
