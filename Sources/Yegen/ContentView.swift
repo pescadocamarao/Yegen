@@ -30,6 +30,11 @@ struct ContentView: View {
         }
         .accentColor(Theme.gold)
         .background(Theme.background)
+        // Interface um degrau mais densa no app inteiro: todas as fontes usam
+        // text styles dinâmicos, então fixar o Dynamic Type em .medium (o
+        // padrão do sistema é .large) reduz títulos e corpos juntos,
+        // preservando a hierarquia entre eles.
+        .environment(\.dynamicTypeSize, .medium)
     }
 }
 
@@ -57,6 +62,8 @@ struct EmptyAnalysisView: View {
 /// Fundo padrão das abas com rolagem.
 struct TabScroll<Content: View>: View {
     let title: String
+    /// Quando presente, mostra o botão "Concluir" na barra do teclado.
+    var onKeyboardDismiss: (() -> Void)? = nil
     @ViewBuilder let content: () -> Content
 
     var body: some View {
@@ -65,6 +72,17 @@ struct TabScroll<Content: View>: View {
                 VStack(alignment: .leading, spacing: 14) { content() }
                     .padding(14)
                     .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .scrollDismissesKeyboard(.interactively)
+            .toolbar {
+                if let onKeyboardDismiss {
+                    ToolbarItemGroup(placement: .keyboard) {
+                        Spacer()
+                        Button("Concluir", action: onKeyboardDismiss)
+                            .font(.body.weight(.semibold))
+                            .foregroundColor(Theme.gold)
+                    }
+                }
             }
             .background(Theme.background)
             .navigationTitle(title)
