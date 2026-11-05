@@ -11,6 +11,8 @@ final class YegenStore: ObservableObject {
     @Published var pagination = PaginationInfo()
     @Published var savedTests: [SavedTest] = []
     @Published var statusMessage: String = ""
+    /// Análise rodando fora da main thread (parsing pesado não trava a UI).
+    @Published var isBusy: Bool = false
 
     /// Chave da seleção manual de vídeo (família|URL) — sobrevive à reanálise.
     @Published private(set) var selectedVideoKey: String?
@@ -30,26 +32,49 @@ final class YegenStore: ObservableObject {
         }
     }
 
-    func analyzeAll() {
+    func analyzeAll(onDone: (() -> Void)? = nil) {
+        guard !isBusy else { return }
+        let snapshot = inputs
         let previousKey = selectedVideoKey
-        listAnalysis = Engine.analyzeList(inputs: inputs)
-        pagination = Engine.detectPagination(inputs: inputs)
+        isBusy = true
+        statusMessage = "Analisando…"
+        Task { @MainActor in
+            // O parsing (SwiftSoup + regex sobre HTML grande) roda FORA da
+            // main thread; só a aplicação do resultado volta pra cá.
+            let result = await Task.detached(priority: .userInitiated) {
+                Self.computeAnalysis(inputs: snapshot)
+            }.value
+            listAnalysis = result.list
+            pagination = result.pagination
+            categories = result.categories
+            detailAnalysis = result.detail
+            // A seleção manual é soberana: se o candidato ainda existe, ela fica.
+            if let key = previousKey,
+               !(detailAnalysis?.videos.contains { videoKey($0) == key } ?? false) {
+                selectedVideoKey = nil
+            }
+            analyzedSnapshot = snapshot
+            let videoCount = detailAnalysis?.videos.count ?? 0
+            statusMessage = "Análise pronta: \(listAnalysis?.itemCount ?? 0) itens, "
+                + "\(categories.count) categorias, \(videoCount) candidatos de vídeo."
+            isBusy = false
+            onDone?()
+        }
+    }
+
+    /// Parte pesada da análise — tipos de valor puros, segura fora da main.
+    private static func computeAnalysis(inputs: YegenInputs)
+        -> (list: ListAnalysis?, pagination: PaginationInfo,
+            categories: [CategoryLink], detail: DetailAnalysis?) {
+        let list = Engine.analyzeList(inputs: inputs)
+        let pagination = Engine.detectPagination(inputs: inputs)
+        var categories: [CategoryLink] = []
         if let doc = Engine.parse(inputs.listHTML) {
-            categories = Engine.detectCategories(doc: doc, list: listAnalysis,
+            categories = Engine.detectCategories(doc: doc, list: list,
                                                  origin: Engine.siteOrigin(inputs))
-        } else {
-            categories = []
         }
-        detailAnalysis = Engine.analyzeDetail(inputs: inputs, list: listAnalysis)
-        // A seleção manual é soberana: se o candidato ainda existe, ela fica.
-        if let key = previousKey,
-           !(detailAnalysis?.videos.contains { videoKey($0) == key } ?? false) {
-            selectedVideoKey = nil
-        }
-        analyzedSnapshot = inputs
-        let videoCount = detailAnalysis?.videos.count ?? 0
-        statusMessage = "Análise pronta: \(listAnalysis?.itemCount ?? 0) itens, "
-            + "\(categories.count) categorias, \(videoCount) candidatos de vídeo."
+        let detail = Engine.analyzeDetail(inputs: inputs, list: list)
+        return (list, pagination, categories, detail)
     }
 
     // MARK: - Vídeo (seleção manual soberana)
@@ -136,18 +161,20 @@ final class YegenStore: ObservableObject {
     func load(_ test: SavedTest) {
         inputs = test.inputs
         selectedVideoKey = nil
-        analyzeAll()
-        // Restaura categorias desmarcadas e a família de vídeo escolhida.
-        if !test.deselectedCategories.isEmpty {
-            for i in categories.indices where test.deselectedCategories.contains(categories[i].url) {
-                categories[i].selected = false
+        // A restauração acontece quando a análise (agora assíncrona) termina.
+        analyzeAll {
+            // Restaura categorias desmarcadas e a família de vídeo escolhida.
+            if !test.deselectedCategories.isEmpty {
+                for i in self.categories.indices where test.deselectedCategories.contains(self.categories[i].url) {
+                    self.categories[i].selected = false
+                }
             }
+            if let family = test.selectedVideoFamily,
+               let match = self.detailAnalysis?.videos.first(where: { $0.family == family }) {
+                self.selectedVideoKey = self.videoKey(match)
+            }
+            self.statusMessage = "Teste carregado: \(test.name)."
         }
-        if let family = test.selectedVideoFamily,
-           let match = detailAnalysis?.videos.first(where: { $0.family == family }) {
-            selectedVideoKey = videoKey(match)
-        }
-        statusMessage = "Teste carregado: \(test.name)."
     }
 
     func deleteTests(at offsets: IndexSet) {
