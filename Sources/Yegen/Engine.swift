@@ -148,9 +148,20 @@ enum Engine {
         var items: [Element] = []
         for group in ranked {
             // Fora os ancestrais de outros membros (cadeia de embrulho).
-            let flat = group.filter { el in
-                !group.contains { other in other !== el && isAncestor(el, of: other) }
+            // Passada única: subindo de cada membro, marca os ancestrais que
+            // também estão no grupo (sem comparações par a par — era O(n²)).
+            let groupIDs = Set(group.map { ObjectIdentifier($0) })
+            var wrapped = Set<ObjectIdentifier>()
+            for el in group {
+                var ancestor = el.parent()
+                while let current = ancestor {
+                    if groupIDs.contains(ObjectIdentifier(current)) {
+                        wrapped.insert(ObjectIdentifier(current))
+                    }
+                    ancestor = current.parent()
+                }
             }
+            let flat = group.filter { !wrapped.contains(ObjectIdentifier($0)) }
             guard flat.count >= 3, let first = flat.first,
                   !HTMLKit.select(first, "a, img").isEmpty else { continue }
             items = flat
@@ -383,6 +394,60 @@ enum Engine {
         return result
     }
 
+    // MARK: - Varredura rápida de URLs de mídia no corpo cru
+    //
+    // As regexes de corpo inteiro com prefixo lazy ([\s\S]*? …) portadas do
+    // motor JS causavam backtracking pesado no NSRegularExpression sobre o
+    // HTML inteiro (minutos de "Analisando…"). A detecção agora é em duas
+    // fases, com o MESMO resultado: (1) busca simples de string localiza as
+    // ocorrências dos marcadores; (2) uma regex curta, ancorada e limitada à
+    // vizinhança da ocorrência (janela), extrai e valida a URL candidata —
+    // incluindo as formas com barras escapadas (https?:\?/\?/) das receitas
+    // provadas do guia. Os FieldRule emitidos pras famílias não mudam: só a
+    // forma de ACHAR a URL no app é que ficou rápida.
+
+    /// Desescapa "\/" → "/" (a cadeia do guia) no resultado extraído.
+    private static func unescapeSlashes(_ url: String) -> String {
+        url.replacingOccurrences(of: "\\/", with: "/")
+    }
+
+    /// Primeira URL .m3u8/.mp4 do corpo. scriptMode = família Script/JSON
+    /// (a alternativa "index." encerra a captura logo após a extensão);
+    /// fora dele, vale a família de corpo (captura vai até a aspa).
+    private static func firstMediaURL(in raw: String, scriptMode: Bool) -> String? {
+        let pattern = scriptMode
+            ? #"^(https?:\?/\?/[^"]+?(?:index\.(?:m3u8|mp4)|\.(?:m3u8|mp4)[^"]*))"#
+            : #"^(https?:\?/\?/[^"]+?\.(?:m3u8|mp4)[^"]*)"#
+        var searchStart = raw.startIndex
+        while let hit = raw.range(of: "http", range: searchStart..<raw.endIndex) {
+            let windowEnd = raw.index(hit.lowerBound, offsetBy: 2048,
+                                      limitedBy: raw.endIndex) ?? raw.endIndex
+            let window = String(raw[hit.lowerBound..<windowEnd])
+            if let captured = HTMLKit.firstCapture(pattern, in: window, replacement: "$1") {
+                return unescapeSlashes(captured)
+            }
+            searchStart = raw.index(after: hit.lowerBound)
+        }
+        return nil
+    }
+
+    /// URL da config MacCMS (player_aaaa): localiza o marcador e procura o
+    /// par "url": "…" numa janela curta a partir dele.
+    private static func macCMSPlayerURL(in raw: String) -> String? {
+        let pattern = #""url"\s*:\s*"(https?:\?/\?/[^"]+?\.(?:m3u8|mp4)[^"]*)""#
+        var searchStart = raw.startIndex
+        while let hit = raw.range(of: "player_aaaa", range: searchStart..<raw.endIndex) {
+            let windowEnd = raw.index(hit.lowerBound, offsetBy: 8192,
+                                      limitedBy: raw.endIndex) ?? raw.endIndex
+            let window = String(raw[hit.lowerBound..<windowEnd])
+            if let captured = HTMLKit.firstCapture(pattern, in: window, replacement: "$1") {
+                return unescapeSlashes(captured)
+            }
+            searchStart = raw.index(after: hit.lowerBound)
+        }
+        return nil
+    }
+
     private static func videoCandidates(raw: String, doc: Document, origin: String,
                                         source: String, coverSample: String) -> [VideoCandidate] {
         var out: [VideoCandidate] = []
@@ -408,7 +473,7 @@ enum Engine {
             regex: #"player_aaaa\s*=\s*\{[\s\S]*?"url"\s*:\s*"(https?:\?/\?/[^"]+?\.(?:m3u8|mp4)[^"]*)""#,
             replacement: "$1")
         add(family: "MacCMS (player_aaaa)", field: macField,
-            url: HTMLKit.applyBodyField(macField, rawText: raw), score: 495)
+            url: macCMSPlayerURL(in: raw), score: 495)
 
         // 2) Script/JSON unificado (guia) — .m3u8/.mp4 escapado em script/config
         let scriptField = FieldRule(
@@ -416,7 +481,7 @@ enum Engine {
             regex: #"[\s\S]*?(https?:\?/\?/[^"]+?(?:index\.(?:m3u8|mp4)|\.(?:m3u8|mp4)[^"]*))[\s\S]*"#,
             replacement: "$1")
         add(family: "Script/JSON .m3u8/.mp4 unificado (guia)", field: scriptField,
-            url: HTMLKit.applyBodyField(scriptField, rawText: raw), score: 70)
+            url: firstMediaURL(in: raw, scriptMode: true), score: 70)
 
         // 3) Corpo unificado (guia)
         let bodyField = FieldRule(
@@ -424,7 +489,7 @@ enum Engine {
             regex: #"[\s\S]*?(https?:\?/\?/[^"]+?\.(?:m3u8|mp4)[^"]*)[\s\S]*"#,
             replacement: "$1")
         add(family: ".m3u8/.mp4 unificado no corpo (guia)", field: bodyField,
-            url: HTMLKit.applyBodyField(bodyField, rawText: raw), score: 70)
+            url: firstMediaURL(in: raw, scriptMode: false), score: 70)
 
         // 4) Guia: iframe com url= no src
         let iframeField = FieldRule(
