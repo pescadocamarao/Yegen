@@ -38,12 +38,12 @@ enum JVal {
     static func escape(_ s: String) -> String {
         var out = "\""
         for scalar in s.unicodeScalars {
-            switch scalar {
-            case "\"": out += "\\\""
-            case "\\": out += "\\\\"
-            case "\n": out += "\\n"
-            case "\r": out += "\\r"
-            case "\t": out += "\\t"
+            switch scalar.value {
+            case 0x22: out += "\\\""
+            case 0x5C: out += "\\\\"
+            case 0x0A: out += "\\n"
+            case 0x0D: out += "\\r"
+            case 0x09: out += "\\t"
             default:
                 if scalar.value < 0x20 {
                     out += String(format: "\\u%04x", scalar.value)
