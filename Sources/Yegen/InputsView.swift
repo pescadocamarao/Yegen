@@ -17,7 +17,7 @@ struct InputsView: View {
     var body: some View {
         TabScroll(title: "Entradas", onKeyboardDismiss: { focusedField = nil }) {
             VStack(alignment: .leading, spacing: 6) {
-                Text("Yegen nativo v1.0.4")
+                Text("Yegen nativo v1.0.5")
                     .font(.title3.weight(.bold))
                     .foregroundColor(Theme.textPrimary)
                 Text("Cole os HTMLs das páginas e toque em Analisar. A rule sai na aba JSON.")
