@@ -18,10 +18,10 @@ struct CategoriesView: View {
                             ForEach($store.categories) { $cat in
                                 Toggle(isOn: $cat.selected) {
                                     VStack(alignment: .leading, spacing: 2) {
-                                        Text(cat.name)
+                                        Text($cat.wrappedValue.name)
                                             .font(.callout)
                                             .foregroundColor(Theme.textPrimary)
-                                        Text(store.pagination.paginate(cat.url))
+                                        Text(store.pagination.paginate($cat.wrappedValue.url))
                                             .font(.system(.caption2, design: .monospaced))
                                             .foregroundColor(Theme.textDim)
                                             .lineLimit(2)
