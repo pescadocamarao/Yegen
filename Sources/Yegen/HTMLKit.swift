@@ -1,6 +1,31 @@
 import Foundation
 import SwiftSoup
 
+/// Acessores NÃO-lançantes sobre o SwiftSoup atual (2.14.x).
+/// Na linha 2.10+ do SwiftSoup, `attr(_:)`, `text()` e `classNames()`
+/// viraram `throws` — e o SPM resolve a maior 2.x a partir do
+/// `from: "2.6.0"` do project.yml. Estes wrappers restauram a semântica
+/// antiga que o motor pressupõe (ausente/falha = vazio), com o mesmo
+/// comportamento dos acessores pré-2.10: attr ausente devolvia "" e
+/// text() de elemento vazio devolvia "".
+extension Element {
+    /// Equivalente seguro de `attr(_:)`: "" quando o atributo não existe.
+    func attrOrEmpty(_ key: String) -> String {
+        (try? attr(key)) ?? ""
+    }
+
+    /// Equivalente seguro de `text()`: "" quando não há texto.
+    func textOrEmpty() -> String {
+        (try? text()) ?? ""
+    }
+
+    /// Equivalente seguro de `classNames()`: classes ordenadas
+    /// (o original devolve OrderedSet; o motor sempre ordenou em seguida).
+    func classNamesOrEmpty() -> [String] {
+        ((try? classNames())?.sorted()) ?? []
+    }
+}
+
 /// Utilidades sobre o SwiftSoup + regex — o "modo estrito" do Yealico:
 /// toda extração é testada do mesmo jeito que o app lê (selector dentro
 /// do contexto, function/param, regex com replacement "$1").
@@ -17,9 +42,9 @@ enum HTMLKit {
     }
 
     static func metaContent(_ doc: Document, property: String) -> String? {
-        let metas = doc.getElementsByAttributeValue("property", property).array()
+        let metas = (try? doc.getElementsByAttributeValue("property", property))?.array() ?? []
         for m in metas {
-            let v = m.attr("content")
+            let v = m.attrOrEmpty("content")
             if !v.isEmpty { return v }
         }
         return nil
@@ -30,7 +55,7 @@ enum HTMLKit {
     /// Assinatura estrutural de um elemento: tag + classes ordenadas.
     /// É ela que agrupa os itens repetidos da lista.
     static func signature(_ el: Element) -> String {
-        let classes = el.classNames().sorted()
+        let classes = el.classNamesOrEmpty().sorted()
         if classes.isEmpty { return el.tagName() }
         return el.tagName() + "." + classes.joined(separator: ".")
     }
@@ -48,9 +73,9 @@ enum HTMLKit {
     /// ou a tag pura (a lei do seletor mínimo começa aqui).
     static func shortSelector(_ el: Element) -> String {
         let tag = el.tagName()
-        let id = el.attr("id")
+        let id = el.attrOrEmpty("id")
         if !id.isEmpty && isStableToken(id) { return "\(tag)#\(id)" }
-        let classes = el.classNames().sorted()
+        let classes = el.classNamesOrEmpty().sorted()
         if let c = classes.first(where: { isStableToken($0) }) {
             return "\(tag).\(c)"
         }
@@ -153,11 +178,11 @@ enum HTMLKit {
                 .split(separator: ",")
                 .map { $0.trimmingCharacters(in: .whitespaces) }
             for p in params where !p.isEmpty {
-                let v = el.attr(p)
+                let v = el.attrOrEmpty(p)
                 if !v.isEmpty { value = v; break }
             }
         case "text":
-            value = el.text()
+            value = el.textOrEmpty()
         case "html":
             value = try? el.html()
         default:
@@ -167,7 +192,7 @@ enum HTMLKit {
                 let raw = (try? el.outerHtml()) ?? ""
                 return applyBodyField(field, rawText: raw)
             }
-            value = el.text()
+            value = el.textOrEmpty()
         }
         guard var v = value else { return nil }
         if let pattern = field.regex, let repl = field.replacement,
