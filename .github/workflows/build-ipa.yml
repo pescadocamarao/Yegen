@@ -1,3 +1,41 @@
+# ============================================================================
+# Yegen — workflow v2 (RASCUNHO pra revisão — NÃO está no ar)
+# ============================================================================
+# O QUE NÃO MUDOU (rota atual, continua sendo o padrão):
+#   • Todo push na main e todo disparo manual SEM o interruptor abaixo geram
+#     o IPA SEM assinatura (artifact "Yegen-unsigned-ipa"), igual a hoje.
+#   • A step "Publicar erros no repo" (build-errors.txt) continua no fim.
+#
+# O QUE É NOVO (rota TestFlight, steps separadas no fim do job):
+#   • Só roda quando o workflow é disparado MANUALMENTE (workflow_dispatch)
+#     com o input "enviar_testflight" marcado como true. Push nunca envia.
+#   • Bloco 1 — "Preparar chave de API": decodifica o segredo ASC_KEY_BASE64
+#     e grava o arquivo .p8 da chave do App Store Connect nos lugares onde
+#     o xcodebuild e o altool procuram. Sem essa chave nada assina nem sobe.
+#   • Bloco 2 — "Preparar ExportOptions.plist": pega o arquivo
+#     ExportOptions.plist da raiz do repo e troca o marcador TEAM_ID_AQUI
+#     pelo Team ID real (segredo TEAM_ID), gerando a cópia que a exportação
+#     usa. (Esse arquivo precisa entrar no repo junto com este workflow.)
+#   • Bloco 3 — "Arquivar (assinatura automática)": xcodebuild archive com
+#     -allowProvisioningUpdates e a chave de API: a Apple cria/atualiza
+#     certificado e perfil de distribuição sozinha, sem Mac local. O número
+#     da build (CURRENT_PROJECT_VERSION) vira o nº da run, pra nunca repetir
+#     build igual no TestFlight. CODE_SIGN_STYLE=Automatic vale só nesta
+#     linha (o project.yml segue Manual, a rota sem assinatura não muda).
+#   • Bloco 4 — "Exportar .ipa (App Store Connect)": -exportArchive gera o
+#     .ipa assinado pra loja a partir do .xcarchive, usando o ExportOptions.
+#   • Bloco 5 — "Enviar pro TestFlight": xcrun altool --upload-app sobe o
+#     .ipa usando a mesma chave de API. Depois disso a Apple processa a
+#     build (uns minutos) e ela aparece no App Store Connect → TestFlight.
+#
+# SEGREDOS que precisam existir no GitHub (Settings → Secrets → Actions):
+#   ASC_KEY_ID     → Key ID da chave de API (ex.: ABCD123456)
+#   ASC_ISSUER_ID  → Issuer ID da conta (formato UUID)
+#   ASC_KEY_BASE64 → conteúdo do arquivo .p8 convertido em base64
+#   TEAM_ID        → Team ID da conta de desenvolvedor (10 caracteres)
+# NUNCA coloque valores reais neste arquivo.
+# ============================================================================
+
 name: Build IPA
 
 permissions:
@@ -5,6 +43,11 @@ permissions:
 
 on:
   workflow_dispatch:
+    inputs:
+      enviar_testflight:
+        description: "Enviar a build assinada pro TestFlight depois de compilar"
+        type: boolean
+        default: false
   push:
     branches:
       - main
@@ -54,6 +97,91 @@ jobs:
           name: Yegen-unsigned-ipa
           path: Yegen-unsigned.ipa
           if-no-files-found: error
+
+      # ======================================================================
+      # ROTA TESTFLIGHT — só roda com enviar_testflight = true (manual)
+      # ======================================================================
+
+      # Bloco 1 — grava o .p8 onde o xcodebuild (-authenticationKeyPath) e o
+      # altool (busca automática em ~/.appstoreconnect/private_keys) acham.
+      - name: "TestFlight 1 — Preparar chave de API do App Store Connect"
+        if: ${{ inputs.enviar_testflight }}
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_KEY_BASE64: ${{ secrets.ASC_KEY_BASE64 }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/private_keys"
+          mkdir -p "$HOME/.appstoreconnect/private_keys"
+          echo "$ASC_KEY_BASE64" | base64 --decode > "$RUNNER_TEMP/private_keys/AuthKey_${ASC_KEY_ID}.p8"
+          cp "$RUNNER_TEMP/private_keys/AuthKey_${ASC_KEY_ID}.p8" "$HOME/.appstoreconnect/private_keys/"
+          echo "Chave de API instalada (Key ID: $ASC_KEY_ID)"
+
+      # Bloco 2 — troca o marcador TEAM_ID_AQUI pelo Team ID real.
+      - name: "TestFlight 2 — Preparar ExportOptions.plist"
+        if: ${{ inputs.enviar_testflight }}
+        env:
+          TEAM_ID: ${{ secrets.TEAM_ID }}
+        run: |
+          sed "s/TEAM_ID_AQUI/$TEAM_ID/g" ExportOptions.plist > build/ExportOptions.plist
+          grep -A1 teamID build/ExportOptions.plist
+
+      # Bloco 3 — archive assinado: a Apple provisiona tudo sozinha via API.
+      - name: "TestFlight 3 — Arquivar (assinatura automática)"
+        if: ${{ inputs.enviar_testflight }}
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          TEAM_ID: ${{ secrets.TEAM_ID }}
+        run: |
+          xcodebuild \
+            -project Yegen.xcodeproj \
+            -scheme Yegen \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath build/Yegen.xcarchive \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$RUNNER_TEMP/private_keys/AuthKey_${ASC_KEY_ID}.p8" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            CODE_SIGN_STYLE=Automatic \
+            DEVELOPMENT_TEAM="$TEAM_ID" \
+            CURRENT_PROJECT_VERSION="${{ github.run_number }}" \
+            archive
+
+      # Bloco 4 — exporta o .ipa de loja a partir do archive.
+      - name: "TestFlight 4 — Exportar .ipa (App Store Connect)"
+        if: ${{ inputs.enviar_testflight }}
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          xcodebuild \
+            -exportArchive \
+            -archivePath build/Yegen.xcarchive \
+            -exportPath build/export \
+            -exportOptionsPlist build/ExportOptions.plist \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$RUNNER_TEMP/private_keys/AuthKey_${ASC_KEY_ID}.p8" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+          ls -lh build/export/
+
+      # Bloco 5 — upload: depois disto a build aparece no TestFlight.
+      - name: "TestFlight 5 — Enviar pro TestFlight (altool)"
+        if: ${{ inputs.enviar_testflight }}
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          xcrun altool --upload-app \
+            --type ios \
+            --file "build/export/Yegen.ipa" \
+            --apiKey "$ASC_KEY_ID" \
+            --apiIssuer "$ASC_ISSUER_ID"
+
+      # ======================================================================
+      # FIM DA ROTA TESTFLIGHT
+      # ======================================================================
 
       - name: Publicar erros no repo
         if: failure()
