@@ -1,0 +1,97 @@
+name: Build IPA
+
+permissions:
+  contents: write
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    name: Build unsigned IPA
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Instalar XcodeGen
+        run: brew install xcodegen
+
+      - name: Gerar o projeto Xcode
+        run: xcodegen generate
+
+      - name: Compilar (sem assinatura)
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project Yegen.xcodeproj \
+            -scheme Yegen \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            -derivedDataPath build/DerivedData 2>&1 | tee build-full-log.txt
+
+      - name: Empacotar o .ipa (sem assinatura)
+        run: |
+          APP_PATH=$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name "*.app" | head -n 1)
+          echo "App encontrado: $APP_PATH"
+          rm -rf Payload
+          mkdir -p Payload
+          cp -R "$APP_PATH" Payload/
+          zip -r Yegen-unsigned.ipa Payload
+          ls -lh Yegen-unsigned.ipa
+
+      - name: Subir o .ipa como artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Yegen-unsigned-ipa
+          path: Yegen-unsigned.ipa
+          if-no-files-found: error
+
+      - name: Publicar erros no repo
+        if: failure()
+        continue-on-error: true
+        run: |
+          REPORT_TMP="$(mktemp)"
+          if [[ -f build-full-log.txt ]]; then
+            {
+              echo "Yegen — erros da build"
+              echo "Run: $GITHUB_RUN_ID"
+              echo "Gerado em (UTC): $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+              echo
+              if grep -q "error:" build-full-log.txt; then
+                echo "== Linhas com error: (máx. 100) =="
+                grep -n "error:" build-full-log.txt | head -n 100
+                echo
+                echo "== Contexto final do log (últimas 100 linhas) =="
+                tail -n 100 build-full-log.txt
+              else
+                echo "Nenhuma linha com 'error:' encontrada; últimas 200 linhas do log:"
+                echo
+                tail -n 200 build-full-log.txt
+              fi
+            } > "$REPORT_TMP"
+          else
+            {
+              echo "Yegen — erros da build"
+              echo "Run: $GITHUB_RUN_ID"
+              echo "Gerado em (UTC): $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+              echo
+              echo "build-full-log.txt não foi gerado nesta run."
+            } > "$REPORT_TMP"
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin "$GITHUB_REF_NAME"
+          git rebase "origin/$GITHUB_REF_NAME"
+          cp "$REPORT_TMP" build-errors.txt
+          git add build-errors.txt
+          git commit -m "ci: build errors"
+          git push origin "HEAD:$GITHUB_REF_NAME"
