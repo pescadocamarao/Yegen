@@ -41,22 +41,42 @@ final class YegenStore: ObservableObject {
         Task { @MainActor in
             // O parsing (SwiftSoup + regex sobre HTML grande) roda FORA da
             // main thread; só a aplicação do resultado volta pra cá.
-            let result = await Task.detached(priority: .userInitiated) {
+            // Teto de segurança (~20s): a computação disputa com um timer;
+            // se estourar, conclui com o que houver e SEMPRE destrava a UI
+            // (nenhum caminho deixa o "Analisando…" eterno).
+            let compute = Task.detached(priority: .userInitiated) {
                 Self.computeAnalysis(inputs: snapshot)
-            }.value
-            listAnalysis = result.list
-            pagination = result.pagination
-            categories = result.categories
-            detailAnalysis = result.detail
-            // A seleção manual é soberana: se o candidato ainda existe, ela fica.
-            if let key = previousKey,
-               !(detailAnalysis?.videos.contains { videoKey($0) == key } ?? false) {
-                selectedVideoKey = nil
+            }
+            typealias AnalysisResult = (list: ListAnalysis?, pagination: PaginationInfo,
+                                        categories: [CategoryLink], detail: DetailAnalysis?)
+            let finished: AnalysisResult? = await withTaskGroup(of: AnalysisResult?.self) { group in
+                group.addTask { await compute.value }
+                group.addTask {
+                    try? await Task.sleep(nanoseconds: 20_000_000_000)
+                    return nil
+                }
+                let first = await group.next() ?? nil
+                group.cancelAll()
+                return first
+            }
+            if let result = finished {
+                listAnalysis = result.list
+                pagination = result.pagination
+                categories = result.categories
+                detailAnalysis = result.detail
+                // A seleção manual é soberana: se o candidato ainda existe, ela fica.
+                if let key = previousKey,
+                   !(detailAnalysis?.videos.contains { videoKey($0) == key } ?? false) {
+                    selectedVideoKey = nil
+                }
+                let videoCount = detailAnalysis?.videos.count ?? 0
+                statusMessage = "Análise pronta: \(listAnalysis?.itemCount ?? 0) itens, "
+                    + "\(categories.count) categorias, \(videoCount) candidatos de vídeo."
+            } else {
+                statusMessage = "Análise parcial: passou do tempo limite (20s) — "
+                    + "mantive o resultado anterior. Toque em Analisar para tentar de novo."
             }
             analyzedSnapshot = snapshot
-            let videoCount = detailAnalysis?.videos.count ?? 0
-            statusMessage = "Análise pronta: \(listAnalysis?.itemCount ?? 0) itens, "
-                + "\(categories.count) categorias, \(videoCount) candidatos de vídeo."
             isBusy = false
             onDone?()
         }
