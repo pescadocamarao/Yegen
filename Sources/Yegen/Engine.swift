@@ -136,7 +136,7 @@ enum Engine {
         let origin = siteOrigin(inputs)
         let structural: Set<String> = ["html", "head", "body", "script", "style",
                                        "meta", "link", "title", "noscript", "br"]
-        let all = doc.getAllElements().array().filter { !structural.contains($0.tagName()) }
+        let all = ((try? doc.getAllElements())?.array() ?? []).filter { !structural.contains($0.tagName()) }
 
         // Blocos repetidos: mesma assinatura (tag+classes) sob o mesmo pai.
         var groups: [String: [Element]] = [:]
@@ -180,15 +180,15 @@ enum Engine {
 
     private static func detectTitle(in item: Element, sample: [Element],
                                     result: inout ListAnalysis) -> FieldRule? {
-        let descendants = item.getAllElements().array().filter { $0 !== item }
+        let descendants = ((try? item.getAllElements())?.array() ?? []).filter { $0 !== item }
         var candidates: [(target: Element, function: String, param: String?)] = []
-        for el in descendants where el.tagName() == "a" && !el.attr("title").isEmpty {
+        for el in descendants where el.tagName() == "a" && !el.attrOrEmpty("title").isEmpty {
             candidates.append((el, "attr", "title"))
         }
         for el in descendants where ["h1", "h2", "h3", "h4"].contains(el.tagName()) {
             candidates.append((el, "text", nil))
         }
-        for el in descendants where el.classNames().contains(where: { $0.lowercased().contains("title") }) {
+        for el in descendants where el.classNamesOrEmpty().contains(where: { $0.lowercased().contains("title") }) {
             candidates.append((el, "text", nil))
         }
         for el in descendants where el.tagName() == "a" {
@@ -221,9 +221,9 @@ enum Engine {
                                     result: inout ListAnalysis) -> FieldRule? {
         guard let img = HTMLKit.select(item, "img").first else { return nil }
         let param: String
-        if !img.attr("data-src").isEmpty { param = "data-src, src" }
-        else if !img.attr("data-original").isEmpty { param = "data-original, src" }
-        else if !img.attr("data-lazy-src").isEmpty { param = "data-lazy-src, src" }
+        if !img.attrOrEmpty("data-src").isEmpty { param = "data-src, src" }
+        else if !img.attrOrEmpty("data-original").isEmpty { param = "data-original, src" }
+        else if !img.attrOrEmpty("data-lazy-src").isEmpty { param = "data-lazy-src, src" }
         else { param = "src" }
         let field = FieldRule(selector: HTMLKit.relativeSelector(item: item, target: img),
                               function: "attr", param: param,
@@ -251,7 +251,7 @@ enum Engine {
     private static func detectIdCode(in item: Element, sample: [Element], origin: String,
                                      result: inout ListAnalysis) -> FieldRule? {
         let anchors = HTMLKit.select(item, "a").filter { a in
-            let h = a.attr("href")
+            let h = a.attrOrEmpty("href")
             return !h.isEmpty && !h.hasPrefix("#") && !h.hasPrefix("javascript")
         }
         guard let firstAnchor = anchors.first else { return nil }
@@ -301,10 +301,10 @@ enum Engine {
         let origin = siteOrigin(inputs)
 
         // ---- Título: h1 da página > og:title
-        if let h1 = HTMLKit.select(doc, "h1").first(where: { !$0.text().isEmpty }) {
+        if let h1 = HTMLKit.select(doc, "h1").first(where: { !$0.textOrEmpty().isEmpty }) {
             let field = FieldRule(selector: HTMLKit.shortSelector(h1), function: "text")
             result.titleField = field
-            result.titleSample = HTMLKit.extract(field, in: doc) ?? h1.text()
+            result.titleSample = HTMLKit.extract(field, in: doc) ?? h1.textOrEmpty()
         } else if let ogTitle = HTMLKit.metaContent(doc, property: "og:title") {
             result.titleField = FieldRule(selector: "meta[property=\"og:title\"]",
                                           function: "attr", param: "content")
@@ -337,14 +337,14 @@ enum Engine {
                 return true
             }
             let usable = imgs.first(where: { img in
-                let src = !img.attr("data-src").isEmpty ? img.attr("data-src") : img.attr("src")
+                let src = !img.attrOrEmpty("data-src").isEmpty ? img.attrOrEmpty("data-src") : img.attrOrEmpty("src")
                 let bad = ["logo", "icon", "sprite", "avatar", "banner", "loading"]
                 return isImageURL(src) && !bad.contains(where: { src.lowercased().contains($0) })
             }) ?? imgs.first
             if let img = usable {
                 let param: String
-                if !img.attr("data-src").isEmpty { param = "data-src, src" }
-                else if !img.attr("data-original").isEmpty { param = "data-original, src" }
+                if !img.attrOrEmpty("data-src").isEmpty { param = "data-src, src" }
+                else if !img.attrOrEmpty("data-original").isEmpty { param = "data-original, src" }
                 else { param = "src" }
                 let field = FieldRule(selector: HTMLKit.relativeSelector(item: doc, target: img),
                                       function: "attr", param: param,
@@ -444,7 +444,7 @@ enum Engine {
 
         // 6) <video>/<source> no DOM
         for el in HTMLKit.select(doc, "video, source") {
-            let src = el.attr("src")
+            let src = el.attrOrEmpty("src")
             guard src.contains(".mp4") || src.contains(".m3u8") else { continue }
             let field = FieldRule(selector: HTMLKit.relativeSelector(item: doc, target: el),
                                   function: "attr", param: "src")
@@ -460,7 +460,7 @@ enum Engine {
         let detailShape = list?.idCodeSample.map { shape(of: $0) } ?? ""
         var groups: [String: [Element]] = [:]
         for a in HTMLKit.select(doc, "a") {
-            let href = a.attr("href")
+            let href = a.attrOrEmpty("href")
             guard !href.isEmpty, !href.hasPrefix("#"), !href.hasPrefix("javascript") else { continue }
             let key = a.parent().map { HTMLKit.signature($0) } ?? a.tagName()
             groups[key, default: []].append(a)
@@ -469,9 +469,9 @@ enum Engine {
         var bestScore = -1
         for (_, g) in groups where g.count >= 2 && g.count <= 30 {
             let valid = g.filter { a in
-                let text = a.text().trimmingCharacters(in: .whitespacesAndNewlines)
+                let text = a.textOrEmpty().trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !text.isEmpty, text.count <= 30 else { return false }
-                let abs = HTMLKit.absolutize(a.attr("href"), origin: origin)
+                let abs = HTMLKit.absolutize(a.attrOrEmpty("href"), origin: origin)
                 if !detailShape.isEmpty && shape(of: abs) == detailShape { return false }
                 return true
             }
@@ -480,7 +480,7 @@ enum Engine {
             var p = valid.first?.parent()
             var depth = 0
             while let cur = p, depth < 3 {
-                let marker = (cur.attr("class") + " " + cur.attr("id")).lowercased()
+                let marker = (cur.attrOrEmpty("class") + " " + cur.attrOrEmpty("id")).lowercased()
                 if marker.contains("tag") { score += 20; break }
                 p = cur.parent()
                 depth += 1
@@ -497,7 +497,7 @@ enum Engine {
         } else {
             itemSelector = "a"
         }
-        let href0 = first.attr("href")
+        let href0 = first.attrOrEmpty("href")
         let regex: String
         let replacement: String
         if href0.hasPrefix("http://") || href0.hasPrefix("https://") {
@@ -513,7 +513,7 @@ enum Engine {
         result.tagField = FieldRule(selector: "this", function: "attr", param: "href",
                                     regex: regex, replacement: replacement)
         result.tagCount = bestGroup.count
-        result.tagSample = first.text().trimmingCharacters(in: .whitespacesAndNewlines)
+        result.tagSample = first.textOrEmpty().trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     // MARK: - Categorias (grupo de links da página de lista)
@@ -522,7 +522,7 @@ enum Engine {
         let detailShapes = Set((list?.detailSamples ?? []).map { shape(of: $0) })
         var groups: [String: [Element]] = [:]
         for a in HTMLKit.select(doc, "a") {
-            let href = a.attr("href")
+            let href = a.attrOrEmpty("href")
             guard !href.isEmpty, !href.hasPrefix("#"), !href.hasPrefix("javascript") else { continue }
             let key = a.parent().map { HTMLKit.signature($0) } ?? a.tagName()
             groups[key, default: []].append(a)
@@ -533,9 +533,9 @@ enum Engine {
             var links: [CategoryLink] = []
             var seen = Set<String>()
             for a in g {
-                let text = a.text().trimmingCharacters(in: .whitespacesAndNewlines)
+                let text = a.textOrEmpty().trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !text.isEmpty, text.count <= 60 else { continue }
-                let abs = HTMLKit.absolutize(a.attr("href"), origin: origin)
+                let abs = HTMLKit.absolutize(a.attrOrEmpty("href"), origin: origin)
                 if !origin.isEmpty && HTMLKit.host(of: abs) != HTMLKit.host(of: origin) { continue }
                 if detailShapes.contains(shape(of: abs)) { continue }   // grupo = itens, não categorias
                 if abs == origin || abs == origin + "/" { continue }
@@ -593,7 +593,8 @@ enum Engine {
         if hasSearch { root.append(("searchUrl", .str(inputs.searchUrl))) }
 
         // indexRule / searchRule
-        if let list, let itemSel = Optional(list.itemSelector), !itemSel.isEmpty {
+        if let list, !list.itemSelector.isEmpty {
+            let itemSel = list.itemSelector
             var rulePairs: [(String, JVal)] = [("item", .obj([("selector", .str(itemSel))]))]
             if let f = list.titleField { rulePairs.append(("title", f.jval)) }
             if let f = list.coverField { rulePairs.append(("cover", f.jval)) }
