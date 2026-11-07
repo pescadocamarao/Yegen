@@ -136,11 +136,14 @@ final class AppearanceStore: ObservableObject {
         didSet { Self.currentPalette = theme.palette; persist() }
     }
     @Published var density: AppDensity {
-        didSet { persist() }
+        didSet { Self.currentDensity = density; persist() }
     }
 
     /// Paleta vigente — lida pelos tokens estáticos de `Theme`.
     static var currentPalette: YegenPalette = AppTheme.meiaNoite.palette
+    /// Densidade vigente — lida pelo `PanelCard` (sem @EnvironmentObject
+    /// dentro de ViewModifier, que a toolchain do CI rejeitou na v1.2).
+    static var currentDensity: AppDensity = .confortavel
 
     private static let themeKey = "yegen.appearance.theme"
     private static let densityKey = "yegen.appearance.density"
@@ -158,6 +161,7 @@ final class AppearanceStore: ObservableObject {
         theme = AppTheme(rawValue: themeRaw) ?? .meiaNoite
         density = AppDensity(rawValue: densityRaw) ?? .confortavel
         Self.currentPalette = theme.palette
+        Self.currentDensity = density
         // Mudança vinda de outro aparelho (iCloud KV) aplica na hora.
         kvObserver = NotificationCenter.default.addObserver(
             forName: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
@@ -205,11 +209,9 @@ enum Theme {
 }
 
 struct PanelCard: ViewModifier {
-    @EnvironmentObject var appearance: AppearanceStore
-
     func body(content: Content) -> some View {
         content
-            .padding(appearance.density.cardPadding)
+            .padding(AppearanceStore.currentDensity.cardPadding)
             .background(Theme.panel)
             .overlay(
                 RoundedRectangle(cornerRadius: 10)
