@@ -1,5 +1,27 @@
 # ============================================================================
-# Yegen — workflow v2 (RASCUNHO pra revisão — NÃO está no ar)
+# Yegen — workflow v5 (LOCAL — instalar pela web, como nas versões anteriores)
+# Novo no v5: ROTA OTA (instalação por link no iPhone), controlada pelo
+# input manual "instalar_ota". Mantém do v4 a step "Conferir o pacote"
+# logo após o empacotamento — abre o .ipa gerado e FALHA a run se o
+# Info.plist embutido não tiver UILaunchStoryboardName ou se a versão
+# embutida não bater com o project.yml (blindagem contra o defeito da
+# v1.0.4: plist padrão gerado = letterbox).
+#
+# ROTA OTA — só roda com "instalar_ota" = true (manual), depois que o
+# pacote sem assinatura passa na "Conferir o pacote":
+#   • Archive assinado AD HOC (mesma assinatura automática da rota
+#     TestFlight, com -allowProvisioningUpdates e a chave ASC), exportado
+#     com ExportOptions Ad Hoc (method "release-testing") gerado na hora.
+#     O perfil Ad Hoc só inclui aparelhos registrados em Devices — ou
+#     seja, o .ipa resultante só instala no iPhone dele.
+#   • Gera manifest.plist (manifesto OTA da Apple) + index.html com o
+#     link itms-services:// e publica IPA + manifesto + página na branch
+#     "gh-pages" do próprio repo (pasta por versão, ex.: /v1.1/, e cópia
+#     na raiz apontando pra última). Página final:
+#     https://pescadocamarao.github.io/Yegen/
+#   • Requer: GitHub Pages ativado uma vez (Settings → Pages → branch
+#     gh-pages, pasta raiz). A branch nasce na primeira run OTA.
+#   • No fim, a URL da página de instalação sai no resumo da run.
 # ============================================================================
 # O QUE NÃO MUDOU (rota atual, continua sendo o padrão):
 #   • Todo push na main e todo disparo manual SEM o interruptor abaixo geram
@@ -48,6 +70,10 @@ on:
         description: "Enviar a build assinada pro TestFlight depois de compilar"
         type: boolean
         default: false
+      instalar_ota:
+        description: "Publicar a build assinada (Ad Hoc) com link de instalação OTA no iPhone"
+        type: boolean
+        default: false
   push:
     branches:
       - main
@@ -91,12 +117,323 @@ jobs:
           zip -r Yegen-unsigned.ipa Payload
           ls -lh Yegen-unsigned.ipa
 
+      # Conferência do pacote — autópsia automática do .ipa recém-gerado:
+      # garante que o Info.plist EMBUTIDO é o artesanal do repo (com
+      # UILaunchStoryboardName) e que a versão embutida bate com o
+      # project.yml. Se o XcodeGen voltar a gerar um plist padrão, a run
+      # falha AQUI, com mensagem clara, em vez de entregar um app em
+      # modo de compatibilidade (letterbox) e versão 1.0/1.
+      - name: Conferir o pacote
+        run: |
+          set -e
+          TMP=$(mktemp -d)
+          unzip -q Yegen-unsigned.ipa -d "$TMP"
+          APP_PLIST=$(find "$TMP/Payload" -maxdepth 2 -name "Info.plist" -path "*.app/*" | head -n 1)
+          echo "Info.plist do pacote: $APP_PLIST"
+          if [ -z "$APP_PLIST" ]; then
+            echo "::error::CONFERÊNCIA DO PACOTE FALHOU: Info.plist não encontrado dentro do .ipa"
+            exit 1
+          fi
+          LAUNCH=$(/usr/libexec/PlistBuddy -c "Print :UILaunchStoryboardName" "$APP_PLIST" 2>/dev/null || true)
+          if [ -z "$LAUNCH" ]; then
+            echo "::error::CONFERÊNCIA DO PACOTE FALHOU: UILaunchStoryboardName AUSENTE no Info.plist embutido — o pacote saiu com o plist padrão gerado (sem Launch Screen = letterbox). Verifique GENERATE_INFOPLIST_FILE/INFOPLIST_FILE no project.yml."
+            exit 1
+          fi
+          echo "UILaunchStoryboardName embutido: $LAUNCH"
+          ESPERADA=$(grep -m1 "MARKETING_VERSION" project.yml | sed -E 's/.*"([^"]+)".*/\1/')
+          EMBUTIDA=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP_PLIST" 2>/dev/null || true)
+          echo "Versão esperada (project.yml): $ESPERADA | embutida no pacote: $EMBUTIDA"
+          if [ "$EMBUTIDA" != "$ESPERADA" ]; then
+            echo "::error::CONFERÊNCIA DO PACOTE FALHOU: CFBundleShortVersionString embutido ($EMBUTIDA) não bate com o project.yml ($ESPERADA) — o pacote não reflete o projeto."
+            exit 1
+          fi
+          echo "Pacote conferido e aprovado: Launch Screen presente e versão $EMBUTIDA."
+
       - name: Subir o .ipa como artifact
         uses: actions/upload-artifact@v4
         with:
           name: Yegen-unsigned-ipa
           path: Yegen-unsigned.ipa
           if-no-files-found: error
+
+      # ======================================================================
+      # ROTA OTA — só roda com instalar_ota = true (manual), depois que o
+      # pacote sem assinatura passou na "Conferir o pacote". Gera um .ipa
+      # assinado Ad Hoc (só instala em aparelhos registrados) e publica
+      # uma página de instalação no GitHub Pages (branch gh-pages).
+      # ======================================================================
+
+      # Bloco 0 — mesma conferência de segredos da rota TestFlight, pra
+      # falhar na largada se algo estiver ausente (só comprimentos).
+      - name: "OTA 0 — Conferir segredos"
+        if: ${{ inputs.instalar_ota }}
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          TEAM_ID: ${{ secrets.TEAM_ID }}
+          ASC_KEY_BASE64: ${{ secrets.ASC_KEY_BASE64 }}
+        run: |
+          falhou=0
+          conferir() {
+            nome="$1"; valor="$2"; esperado="$3"
+            tam=${#valor}
+            echo "$nome: $tam caracteres"
+            if [[ $tam -eq 0 ]]; then
+              echo "::error::SEGREDO AUSENTE: $nome — cadastrar em Settings → Secrets and variables → Actions → Repository secrets"
+              falhou=1
+            elif [[ $tam -ne $esperado ]]; then
+              echo "::warning::$nome com tamanho inesperado: $tam caracteres (esperado: $esperado) — confira o valor cadastrado"
+            fi
+          }
+          conferir "ASC_KEY_ID" "$ASC_KEY_ID" 10
+          conferir "ASC_ISSUER_ID" "$ASC_ISSUER_ID" 36
+          conferir "TEAM_ID" "$TEAM_ID" 10
+          echo "ASC_KEY_BASE64: ${#ASC_KEY_BASE64} caracteres"
+          if [[ ${#ASC_KEY_BASE64} -eq 0 ]]; then
+            echo "::error::SEGREDO AUSENTE: ASC_KEY_BASE64 — cadastrar em Settings → Secrets and variables → Actions → Repository secrets"
+            falhou=1
+          elif [[ ${#ASC_KEY_BASE64} -le 100 ]]; then
+            echo "::warning::ASC_KEY_BASE64 curto demais: ${#ASC_KEY_BASE64} caracteres (esperado: mais de 100) — confira o valor cadastrado"
+          fi
+          if [[ $falhou -ne 0 ]]; then
+            echo "Abortando antes da build: cadastre os segredos ausentes e dispare de novo."
+            exit 1
+          fi
+          echo "Segredos presentes — seguindo pra rota OTA."
+
+      # Bloco 1 — grava o .p8 onde o xcodebuild procura (igual ao TF1).
+      - name: "OTA 1 — Preparar chave de API do App Store Connect"
+        if: ${{ inputs.instalar_ota }}
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_KEY_BASE64: ${{ secrets.ASC_KEY_BASE64 }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/private_keys"
+          mkdir -p "$HOME/.appstoreconnect/private_keys"
+          echo "$ASC_KEY_BASE64" | base64 --decode > "$RUNNER_TEMP/private_keys/AuthKey_${ASC_KEY_ID}.p8"
+          cp "$RUNNER_TEMP/private_keys/AuthKey_${ASC_KEY_ID}.p8" "$HOME/.appstoreconnect/private_keys/"
+          echo "Chave de API instalada (Key ID: $ASC_KEY_ID)"
+
+      # Bloco 2 — gera o ExportOptions AD HOC na hora (não mora no repo):
+      # method "release-testing" = distribuição Ad Hoc; assinatura
+      # automática deixa a Apple criar o perfil Ad Hoc sozinha, incluindo
+      # os aparelhos registrados em Devices (o iPhone dele).
+      - name: "OTA 2 — Gerar ExportOptions Ad Hoc"
+        if: ${{ inputs.instalar_ota }}
+        env:
+          TEAM_ID: ${{ secrets.TEAM_ID }}
+        run: |
+          mkdir -p build
+          cat > build/ExportOptions-adhoc.plist <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>release-testing</string>
+            <key>teamID</key>
+            <string>${TEAM_ID}</string>
+            <key>signingStyle</key>
+            <string>automatic</string>
+            <key>manageAppVersionAndBuildNumber</key>
+            <false/>
+            <key>provisioningProfiles</key>
+            <dict/>
+            <key>stripSwiftSymbols</key>
+            <true/>
+            <key>compileBitcode</key>
+            <false/>
+          </dict>
+          </plist>
+          EOF
+          plutil -lint build/ExportOptions-adhoc.plist
+          grep -A1 teamID build/ExportOptions-adhoc.plist
+
+      # Bloco 3 — archive assinado: a Apple provisiona certificado e
+      # perfil Ad Hoc sozinha via API (igual ao TF3, arquivo separado
+      # pra não colidir com a rota TestFlight na mesma run).
+      - name: "OTA 3 — Arquivar (assinatura automática, Ad Hoc)"
+        if: ${{ inputs.instalar_ota }}
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          TEAM_ID: ${{ secrets.TEAM_ID }}
+        run: |
+          xcodebuild \
+            -project Yegen.xcodeproj \
+            -scheme Yegen \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath build/Yegen-adhoc.xcarchive \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$RUNNER_TEMP/private_keys/AuthKey_${ASC_KEY_ID}.p8" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            CODE_SIGN_STYLE=Automatic \
+            DEVELOPMENT_TEAM="$TEAM_ID" \
+            CURRENT_PROJECT_VERSION="${{ github.run_number }}" \
+            archive
+
+      # Bloco 4 — exporta o .ipa Ad Hoc a partir do archive.
+      - name: "OTA 4 — Exportar .ipa (Ad Hoc)"
+        if: ${{ inputs.instalar_ota }}
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          xcodebuild \
+            -exportArchive \
+            -archivePath build/Yegen-adhoc.xcarchive \
+            -exportPath build/export-adhoc \
+            -exportOptionsPlist build/ExportOptions-adhoc.plist \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$RUNNER_TEMP/private_keys/AuthKey_${ASC_KEY_ID}.p8" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+          ls -lh build/export-adhoc/
+
+      # Bloco 5 — monta a página de instalação: pasta da versão
+      # (site/v<VERSAO>/) + cópia na raiz (última versão). Cada pasta
+      # leva Yegen.ipa, manifest.plist (apontando pro IPA da própria
+      # pasta) e index.html com o link itms-services://.
+      - name: "OTA 5 — Gerar manifesto e página de instalação"
+        if: ${{ inputs.instalar_ota }}
+        run: |
+          set -e
+          VERSAO=$(grep -m1 "MARKETING_VERSION" project.yml | sed -E 's/.*"([^"]+)".*/\1/')
+          if [ -z "$VERSAO" ]; then
+            echo "::error::OTA FALHOU: MARKETING_VERSION não encontrado no project.yml"
+            exit 1
+          fi
+          echo "VERSAO=$VERSAO" >> "$GITHUB_ENV"
+          PAGES_BASE="https://pescadocamarao.github.io/Yegen"
+          IPA_SRC=$(find build/export-adhoc -maxdepth 1 -name "*.ipa" | head -n 1)
+          if [ -z "$IPA_SRC" ]; then
+            echo "::error::OTA FALHOU: nenhum .ipa em build/export-adhoc"
+            exit 1
+          fi
+          echo "IPA Ad Hoc: $IPA_SRC"
+
+          gerar_pasta() {
+            DEST="$1"; BASE="$2"
+            mkdir -p "$DEST"
+            cp "$IPA_SRC" "$DEST/Yegen.ipa"
+            cat > "$DEST/manifest.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>items</key>
+            <array>
+              <dict>
+                <key>assets</key>
+                <array>
+                  <dict>
+                    <key>kind</key>
+                    <string>software-package</string>
+                    <key>url</key>
+                    <string>${BASE}/Yegen.ipa</string>
+                  </dict>
+                </array>
+                <key>metadata</key>
+                <dict>
+                  <key>bundle-identifier</key>
+                  <string>com.seidao.yegen</string>
+                  <key>bundle-version</key>
+                  <string>${VERSAO}</string>
+                  <key>kind</key>
+                  <string>software</string>
+                  <key>title</key>
+                  <string>Yegen</string>
+                </dict>
+              </dict>
+            </array>
+          </dict>
+          </plist>
+          EOF
+            plutil -lint "$DEST/manifest.plist"
+            MANIFEST_ENC=$(printf '%s' "${BASE}/manifest.plist" | sed 's/:/%3A/g; s/\//%2F/g')
+            cat > "$DEST/index.html" <<EOF
+          <!DOCTYPE html>
+          <html lang="pt-BR">
+          <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <title>Yegen v${VERSAO} — Instalar</title>
+          <style>
+            body { font-family: -apple-system, sans-serif; background: #111; color: #f5f5f5; text-align: center; padding: 48px 20px; }
+            a.botao { display: inline-block; margin-top: 24px; padding: 16px 36px; background: #0a84ff; color: #fff; font-size: 20px; font-weight: 600; border-radius: 14px; text-decoration: none; }
+            p { color: #aaa; }
+          </style>
+          </head>
+          <body>
+          <h1>Yegen v${VERSAO}</h1>
+          <p>Build ${{ github.run_number }} — instalação direta (Ad Hoc)</p>
+          <a class="botao" href="itms-services://?action=download-manifest&amp;url=${MANIFEST_ENC}">Instalar</a>
+          <p>Abra esta página no Safari do iPhone registrado.<br>Primeira vez: Ajustes → Geral → VPN e Gestão de Dispositivos → Confiar.</p>
+          </body>
+          </html>
+          EOF
+            echo "Pasta gerada: $DEST (base: $BASE)"
+          }
+
+          rm -rf site
+          gerar_pasta "site/v${VERSAO}" "${PAGES_BASE}/v${VERSAO}"
+          gerar_pasta "site" "${PAGES_BASE}"
+          find site -type f | sort
+
+      # Bloco 6 — publica site/ na branch gh-pages (cria a branch na
+      # primeira vez) usando o GITHUB_TOKEN do próprio Actions.
+      - name: "OTA 6 — Publicar no GitHub Pages (branch gh-pages)"
+        if: ${{ inputs.instalar_ota }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          PAGES_DIR="$RUNNER_TEMP/pages"
+          REPO_URL="https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          if git ls-remote --exit-code --heads origin gh-pages >/dev/null 2>&1; then
+            echo "Branch gh-pages já existe — clonando."
+            git clone --depth 1 --branch gh-pages "$REPO_URL" "$PAGES_DIR"
+          else
+            echo "Branch gh-pages ainda não existe — criando do zero."
+            mkdir -p "$PAGES_DIR"
+            git -C "$PAGES_DIR" init -b gh-pages
+            git -C "$PAGES_DIR" remote add origin "$REPO_URL"
+          fi
+          cp -R site/. "$PAGES_DIR/"
+          git -C "$PAGES_DIR" config user.name "github-actions[bot]"
+          git -C "$PAGES_DIR" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C "$PAGES_DIR" add -A
+          if git -C "$PAGES_DIR" diff --cached --quiet; then
+            echo "Nada novo pra publicar."
+          else
+            git -C "$PAGES_DIR" commit -m "ota: Yegen v${VERSAO} (run ${{ github.run_number }})"
+            git -C "$PAGES_DIR" push origin gh-pages
+            echo "Publicado na branch gh-pages."
+          fi
+
+      # Bloco 7 — a URL da página de instalação no resumo da run.
+      - name: "OTA 7 — Resumo com o link de instalação"
+        if: ${{ inputs.instalar_ota }}
+        run: |
+          {
+            echo "## 📲 Instalação OTA — Yegen v${VERSAO}"
+            echo ""
+            echo "Abra esta página **no Safari do iPhone** e toque em **Instalar**:"
+            echo ""
+            echo "https://pescadocamarao.github.io/Yegen/"
+            echo ""
+            echo "Página desta versão: https://pescadocamarao.github.io/Yegen/v${VERSAO}/"
+            echo ""
+            echo "O .ipa é Ad Hoc: só instala no iPhone registrado (UDID no perfil)."
+            echo "Se a página der 404, ative o GitHub Pages (Settings → Pages → branch \`gh-pages\`, pasta raiz) e aguarde 1–2 minutos."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "Link de instalação: https://pescadocamarao.github.io/Yegen/"
+
+      # ======================================================================
+      # FIM DA ROTA OTA
+      # ======================================================================
 
       # ======================================================================
       # ROTA TESTFLIGHT — só roda com enviar_testflight = true (manual)
