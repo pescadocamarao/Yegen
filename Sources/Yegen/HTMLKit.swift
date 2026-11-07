@@ -203,6 +203,226 @@ enum HTMLKit {
         return trimmed.isEmpty ? nil : trimmed
     }
 
+    // MARK: Porte do motor web (v1.1) — equivalentes estruturais do DOM
+
+    /// Classes na ORDEM do atributo (o `classesOf` do web preserva a
+    /// ordem; o classNames() do SwiftSoup devolve conjunto ordenado).
+    static func classesInOrder(_ el: Element) -> [String] {
+        el.attrOrEmpty("class")
+            .split(whereSeparator: { $0 == " " || $0 == "\t" || $0 == "\n" || $0 == "\r" })
+            .map(String.init)
+    }
+
+    /// O elemento + todos os descendentes, em ordem de documento
+    /// (o getAllElements já devolve nessa ordem, com o próprio primeiro).
+    static func descendants(of el: Element) -> [Element] {
+        (try? el.getAllElements())?.array() ?? [el]
+    }
+
+    /// Filhos DIRETOS (o `children` do DOM): descendentes cujo pai é o
+    /// próprio elemento — derivado do getAllElements, sem API nova.
+    static func directChildren(of el: Element) -> [Element] {
+        descendants(of: el).filter { $0 !== el && $0.parent() === el }
+    }
+
+    /// Todos os atributos do elemento (nome → valor), enumerados da tag
+    /// de abertura do outerHtml — o SwiftSoup não expõe uma enumeração
+    /// pública estável de atributos; os valores voltam com as entidades
+    /// básicas desescapadas (&amp; &quot; &#39; &lt; &gt;), como o
+    /// getAttribute do navegador devolve.
+    static func allAttributes(_ el: Element) -> [(name: String, value: String)] {
+        guard let html = try? el.outerHtml() else { return [] }
+        var tag = ""
+        var quote: Character? = nil
+        for ch in html {
+            if let q = quote {
+                if ch == q { quote = nil }
+            } else if ch == "\"" || ch == "'" {
+                quote = ch
+            } else if ch == ">" {
+                break
+            }
+            tag.append(ch)
+        }
+        guard let re = regex(#"([A-Za-z_:][A-Za-z0-9_:.\-]*)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'/>]+)))?"#) else { return [] }
+        let matches = re.matches(in: tag, range: NSRange(tag.startIndex..., in: tag))
+        var out: [(name: String, value: String)] = []
+        for (i, m) in matches.enumerated() {
+            if i == 0 { continue }   // o primeiro token é o nome da tag
+            guard let nr = Range(m.range(at: 1), in: tag) else { continue }
+            var value = ""
+            for g in 2...4 where m.range(at: g).location != NSNotFound {
+                if let vr = Range(m.range(at: g), in: tag) { value = String(tag[vr]); break }
+            }
+            value = value
+                .replacingOccurrences(of: "&amp;", with: "&")
+                .replacingOccurrences(of: "&quot;", with: "\"")
+                .replacingOccurrences(of: "&#39;", with: "'")
+                .replacingOccurrences(of: "&lt;", with: "<")
+                .replacingOccurrences(of: "&gt;", with: ">")
+            out.append((String(tag[nr]).lowercased(), value))
+        }
+        return out
+    }
+
+    /// buildSelector do web: tag + TODAS as classes; sem classe, tag#id;
+    /// senão a tag pura.
+    static func buildSelector(_ el: Element) -> String {
+        let tag = el.tagName()
+        let cls = classesInOrder(el)
+        if !cls.isEmpty { return tag + "." + cls.joined(separator: ".") }
+        let id = el.attrOrEmpty("id")
+        if !id.isEmpty { return tag + "#" + id }
+        return tag
+    }
+
+    /// Classe volátil (v1.8 do web): muda com user-agent/estado ou tem
+    /// cara de hash — não pode grudar em seletor que vai pro app.
+    static func isVolatileClass(_ c: String) -> Bool {
+        if c.isEmpty { return true }
+        let lc = c.lowercased()
+        let exact: Set<String> = ["mobile", "pc", "desktop", "tablet", "phone",
+                                  "ios", "android", "active", "open", "opened",
+                                  "closed", "selected", "hidden", "current",
+                                  "visible", "invisible", "expanded", "collapsed",
+                                  "show", "shown", "on"]
+        if exact.contains(lc) { return true }
+        if lc.hasPrefix("js_") || lc.hasPrefix("js-") { return true }
+        if lc.hasPrefix("js"), lc.count > 2 {
+            let third = lc[lc.index(lc.startIndex, offsetBy: 2)]
+            if third == "_" || third == "-" { return true }
+        }
+        if lc.hasPrefix("m-") { return true }
+        if lc.count >= 8, lc.allSatisfy({ $0.isLetter || $0.isNumber }),
+           lc.contains(where: { $0.isNumber }), lc.contains(where: { $0.isLetter }) {
+            let vowels = lc.filter { "aeiou".contains($0) }.count
+            let isHex = lc.allSatisfy { $0.isNumber || "abcdef".contains($0) }
+            if vowels <= 1 || isHex { return true }
+        }
+        return false
+    }
+
+    static func stableClasses(_ el: Element) -> [String] {
+        classesInOrder(el).filter { !isVolatileClass($0) }
+    }
+
+    /// buildRobustSelector do web: tag + até 2 classes estáveis; sem
+    /// elas, tag#id não-volátil; senão a tag pura.
+    static func buildRobustSelector(_ el: Element) -> String {
+        let tag = el.tagName()
+        let st = stableClasses(el)
+        if !st.isEmpty { return tag + "." + st.prefix(2).joined(separator: ".") }
+        let id = el.attrOrEmpty("id")
+        if !id.isEmpty && !isVolatileClass(id) { return tag + "#" + id }
+        return tag
+    }
+
+    /// selForEl do web: com alguma classe volátil, usa o robusto.
+    static func selForEl(_ el: Element) -> String {
+        classesInOrder(el).contains(where: isVolatileClass)
+            ? buildRobustSelector(el) : buildSelector(el)
+    }
+
+    /// uniqueRelSelector do web: a forma mais curta que casa
+    /// EXATAMENTE o alvo dentro da raiz (tag → tag.classe → tag.todas →
+    /// #id → últimos 2 elos da cadeia → cadeia inteira); sem forma
+    /// única, devolve a cadeia inteira (ou a tag).
+    static func uniqueRelSelector(root: Element, target: Element) -> String? {
+        if target === root { return "this" }
+        func matches(_ sel: String) -> Bool {
+            let found = select(root, sel)
+            return found.count == 1 && found.first === target
+        }
+        let tag = target.tagName()
+        let cls = classesInOrder(target)
+        var opts: [String] = [tag]
+        if let c0 = cls.first { opts.append(tag + "." + c0) }
+        if cls.count > 1 { opts.append(tag + "." + cls.joined(separator: ".")) }
+        let id = target.attrOrEmpty("id")
+        if !id.isEmpty { opts.append("#" + id) }
+        var chain: [String] = []
+        var cur: Element? = target
+        while let c = cur, c !== root {
+            chain.insert(buildSelector(c), at: 0)
+            cur = c.parent()
+        }
+        if chain.count > 1 { opts.append(chain.suffix(2).joined(separator: " ")) }
+        if !chain.isEmpty { opts.append(chain.joined(separator: " ")) }
+        for o in opts where matches(o) { return o }
+        return chain.isEmpty ? tag : chain.joined(separator: " ")
+    }
+
+    /// sanitizeSelector320 do web (v3.20): tokens de id/classe com
+    /// espaço, float ou cara de hash/placeholder saem do seletor
+    /// emitido. Seletores com atributo/pseudo ([, (, {) não são tocados.
+    static func sanitizeSelector(_ sel: String) -> String {
+        let t = sel.trimmingCharacters(in: .whitespaces)
+        if t.isEmpty || t == "this" { return sel }
+        if t.contains("[") || t.contains("(") || t.contains("{") { return sel }
+        func hashLike(_ tok: String) -> Bool {
+            guard tok.count >= 8,
+                  tok.allSatisfy({ $0.isLetter || $0.isNumber }),
+                  tok.contains(where: { $0.isNumber }) else { return false }
+            let low = tok.lowercased()
+            if low.allSatisfy({ $0.isNumber || "abcdef".contains($0) }) { return true }
+            return low.filter { "aeiou".contains($0) }.count <= 1
+        }
+        func identOk(_ tok: String) -> Bool {
+            guard let re = regex("^-?[_a-zA-Z][_a-zA-Z0-9-]*$"),
+                  re.firstMatch(in: tok, range: NSRange(tok.startIndex..., in: tok)) != nil
+            else { return false }
+            return !hashLike(tok)
+        }
+        func cleanSeg(_ seg: String) -> String {
+            guard let re = regex(#"^(\*|[a-zA-Z][a-zA-Z0-9-]*)?((?:[#.][^#.]+)*)$"#),
+                  let m = re.firstMatch(in: seg, range: NSRange(seg.startIndex..., in: seg))
+            else { return "" }
+            let tag = Range(m.range(at: 1), in: seg).map { String(seg[$0]) } ?? ""
+            let rest = Range(m.range(at: 2), in: seg).map { String(seg[$0]) } ?? ""
+            var toks: [String] = []
+            if let tre = regex("([#.])([^#.]+)") {
+                for tm in tre.matches(in: rest, range: NSRange(rest.startIndex..., in: rest)) {
+                    guard let r1 = Range(tm.range(at: 1), in: rest),
+                          let r2 = Range(tm.range(at: 2), in: rest) else { continue }
+                    let name = String(rest[r2])
+                    if identOk(name) { toks.append(String(rest[r1]) + name) }
+                }
+            }
+            if tag.isEmpty && toks.isEmpty { return "" }
+            return tag + toks.joined()
+        }
+        var clean = ""
+        if let segRe = regex(#"[^\s>+~]+"#) {
+            var last = t.startIndex
+            for m in segRe.matches(in: t, range: NSRange(t.startIndex..., in: t)) {
+                guard let r = Range(m.range, in: t) else { continue }
+                clean += t[last..<r.lowerBound]
+                clean += cleanSeg(String(t[r]))
+                last = r.upperBound
+            }
+            clean += t[last...]
+        } else {
+            clean = t
+        }
+        clean = clean.split(whereSeparator: { $0 == " " || $0 == "\t" || $0 == "\n" })
+            .map(String.init).joined(separator: " ")
+        while clean.contains(" >  > ") { clean = clean.replacingOccurrences(of: " >  > ", with: " > ") }
+        if clean.hasPrefix("> ") { clean = String(clean.dropFirst(2)) }
+        if clean.hasSuffix(" >") { clean = String(clean.dropLast(2)) }
+        clean = clean.trimmingCharacters(in: .whitespaces)
+        if clean.isEmpty {
+            let firstToken = t.split(whereSeparator: { $0 == " " }).first.map(String.init) ?? ""
+            if let tre = regex("^[a-zA-Z][a-zA-Z0-9-]*"),
+               let m = tre.firstMatch(in: firstToken, range: NSRange(firstToken.startIndex..., in: firstToken)),
+               let r = Range(m.range, in: firstToken) {
+                clean = String(firstToken[r])
+            } else {
+                return sel
+            }
+        }
+        return clean != t ? clean : sel
+    }
+
     // MARK: URLs
 
     /// Origem (scheme + host + porta) de uma URL, com "/" no fim.
