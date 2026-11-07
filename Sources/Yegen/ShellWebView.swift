@@ -361,7 +361,7 @@ struct WebShellView: UIViewRepresentable {
         // carregada via loadFileURL sempre do MESMO caminho, pra origem
         // file:// ser estável entre aberturas.
         config.websiteDataStore = .default()
-        config.userContentController.add(
+        config.userContentController.addUserScript(
             WKUserScript(source: ShellScripts.bridge,
                          injectionTime: .atDocumentStart,
                          forMainFrameOnly: false))
