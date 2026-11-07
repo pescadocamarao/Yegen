@@ -145,7 +145,7 @@ struct DetailTabView: View {
                             .foregroundColor(Theme.textDim)
                     }
                     .padding(10)
-                    .background(Color(white: 0.11))
+                    .background(Theme.inset)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
 
                     if store.isManualSelection {
@@ -202,7 +202,7 @@ struct DetailTabView: View {
             }
             .padding(10)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(white: 0.10))
+            .background(Theme.inset)
             .overlay(RoundedRectangle(cornerRadius: 8)
                 .stroke(isChosen ? Theme.gold : Theme.panelBorder, lineWidth: isChosen ? 2 : 1))
             .clipShape(RoundedRectangle(cornerRadius: 8))

@@ -33,7 +33,7 @@ struct JSONTabView: View {
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(10)
-                    .background(Color(white: 0.09))
+                    .background(Theme.inset)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
             } else {
                 Text("O JSON aparece aqui depois de analisar a lista e o detalhe.")
@@ -58,7 +58,7 @@ struct JSONTabView: View {
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(10)
-                .background(Color(white: 0.09))
+                .background(Theme.inset)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
 
             if !copiedLabel.isEmpty {
