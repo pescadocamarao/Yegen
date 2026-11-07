@@ -140,7 +140,7 @@ jobs:
             exit 1
           fi
           echo "UILaunchStoryboardName embutido: $LAUNCH"
-          ESPERADA=$(grep -m1 "MARKETING_VERSION" project.yml | sed -E 's/.*"([^"]+)".*/\1/')
+          ESPERADA=$(grep -m1 -E "^[[:space:]]+MARKETING_VERSION:" project.yml | sed -E 's/.*"([^"]+)".*/\1/')
           EMBUTIDA=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP_PLIST" 2>/dev/null || true)
           echo "Versão esperada (project.yml): $ESPERADA | embutida no pacote: $EMBUTIDA"
           if [ "$EMBUTIDA" != "$ESPERADA" ]; then
@@ -300,7 +300,7 @@ jobs:
         if: ${{ inputs.instalar_ota }}
         run: |
           set -e
-          VERSAO=$(grep -m1 "MARKETING_VERSION" project.yml | sed -E 's/.*"([^"]+)".*/\1/')
+          VERSAO=$(grep -m1 -E "^[[:space:]]+MARKETING_VERSION:" project.yml | sed -E 's/.*"([^"]+)".*/\1/')
           if [ -z "$VERSAO" ]; then
             echo "::error::OTA FALHOU: MARKETING_VERSION não encontrado no project.yml"
             exit 1
