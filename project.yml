@@ -19,6 +19,22 @@ targets:
       - path: Sources/Yegen
     info:
       path: Sources/Yegen/Info.plist
+      properties:
+        CFBundleDevelopmentRegion: pt_BR
+        CFBundleDisplayName: Yegen
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        UILaunchStoryboardName: LaunchScreen
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        ITSAppUsesNonExemptEncryption: false
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+          UISceneConfigurations:
+            UIWindowSceneSessionRoleApplication:
+              - UISceneConfigurationName: Default Configuration
     dependencies:
       - package: SwiftSoup
     settings:
@@ -26,7 +42,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.seidao.yegen
         PRODUCT_NAME: Yegen
         SWIFT_VERSION: "5.9"
-        MARKETING_VERSION: "1.0.5"
+        MARKETING_VERSION: "1.0.6"
         CURRENT_PROJECT_VERSION: "1"
         GENERATE_INFOPLIST_FILE: "NO"
         INFOPLIST_FILE: Sources/Yegen/Info.plist
