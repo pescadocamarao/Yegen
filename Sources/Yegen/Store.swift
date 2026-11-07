@@ -192,27 +192,54 @@ final class YegenStore: ObservableObject {
                           searchUrl: derivedSearchUrl)
     }
 
-    // MARK: - Salvos (persistência local)
+    // MARK: - Salvos (persistência durável + iCloud — v1.2)
 
-    private var savedFileURL: URL {
-        let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        return dir.appendingPathComponent("yegen-salvos.json")
-    }
+    /// Até a v1.1 os salvos moravam só no Documents do contêiner do app
+    /// (`yegen-salvos.json`): apagar o app ou trocar a identidade da
+    /// instalação levava tudo. A v1.2 grava pelo `YegenDataStore`:
+    /// arquivo próprio no Documents + espelho no contêiner iCloud
+    /// Documents (sobrevive à exclusão), com migração automática.
+    let dataStore = YegenDataStore()
+
+    var savedLocationDescription: String { dataStore.locationDescription }
 
     private func persistSavedTests() {
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        if let data = try? encoder.encode(savedTests) {
-            try? data.write(to: savedFileURL, options: .atomic)
-        }
+        dataStore.save(savedTests)
     }
 
     private func loadSavedTests() {
-        guard let data = try? Data(contentsOf: savedFileURL) else { return }
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        if let tests = try? decoder.decode([SavedTest].self, from: data) {
-            savedTests = tests
+        savedTests = dataStore.load()
+    }
+
+    // MARK: - Salvos: exportar / importar
+
+    enum ImportMode { case merge, replace }
+
+    /// O arquivo exportado é o próprio arquivo de dados dos Salvos.
+    func exportSavedData() -> Data? {
+        YegenDataStore.encodeData(tests: savedTests, exportedAt: Date())
+    }
+
+    /// Importa um JSON de Salvos (o formato exportado, ou o legado em
+    /// array solto). Retorna quantos testes entraram; nil = arquivo
+    /// inválido (nada foi tocado).
+    @discardableResult
+    func importSavedData(_ data: Data, mode: ImportMode) -> Int? {
+        guard let incoming = YegenDataStore.decodeTests(from: data) else { return nil }
+        switch mode {
+        case .replace:
+            savedTests = incoming
+            persistSavedTests()
+            statusMessage = "Salvos substituídos: \(incoming.count) testes importados."
+            return incoming.count
+        case .merge:
+            let known = Set(savedTests.map { $0.id })
+            let fresh = incoming.filter { !known.contains($0.id) }
+            savedTests = fresh + savedTests
+            persistSavedTests()
+            statusMessage = "Importação concluída: \(fresh.count) testes novos "
+                + "(\(incoming.count - fresh.count) já existiam)."
+            return fresh.count
         }
     }
 

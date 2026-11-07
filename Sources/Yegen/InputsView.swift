@@ -4,7 +4,9 @@ import UIKit
 /// Aba Entradas: URLs, os três HTMLs colados e as ações Analisar / Salvar.
 struct InputsView: View {
     @EnvironmentObject var store: YegenStore
+    @EnvironmentObject var appearance: AppearanceStore
     @State private var showSaveAlert = false
+    @State private var showAppearance = false
     @State private var saveName = ""
     @FocusState private var focusedField: FocusField?
 
@@ -17,13 +19,15 @@ struct InputsView: View {
     var body: some View {
         TabScroll(title: "Entradas", onKeyboardDismiss: { focusedField = nil }) {
             VStack(alignment: .leading, spacing: 6) {
-                Text("Yegen nativo v1.1")
+                Text("Yegen nativo v1.2")
                     .font(.title3.weight(.bold))
                     .foregroundColor(Theme.textPrimary)
                 Text("Cole os HTMLs das páginas e toque em Analisar. A rule sai na aba JSON.")
                     .font(.callout)
                     .foregroundColor(Theme.textDim)
             }
+
+            appearancePanel
 
             SectionTitle(title: "A rule")
             VStack(spacing: 10) {
@@ -69,7 +73,7 @@ struct InputsView: View {
                 HStack(spacing: 8) {
                     if store.isBusy {
                         ProgressView()
-                            .tint(.black)
+                            .tint(Theme.accentInk)
                     }
                     Text(store.isBusy ? "Analisando…" : "Analisar tudo")
                         .font(.headline)
@@ -77,7 +81,7 @@ struct InputsView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
                 .background(Theme.gold)
-                .foregroundColor(.black)
+                .foregroundColor(Theme.accentInk)
                 .clipShape(RoundedRectangle(cornerRadius: 10))
             }
             .disabled(store.isBusy)
@@ -115,6 +119,97 @@ struct InputsView: View {
         }
     }
 
+    /// Painel "🎨 Aparência do app" — os mesmos 6 temas e as 2 densidades
+    /// do Yegen web, aplicados a todas as abas e sincronizados (iCloud KV).
+    /// Nasce recolhido, como no web.
+    private var appearancePanel: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button {
+                withAnimation { showAppearance.toggle() }
+            } label: {
+                HStack {
+                    Text("🎨 Aparência do app")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundColor(Theme.textPrimary)
+                    Spacer()
+                    Text(showAppearance ? "ocultar" : "mostrar")
+                        .font(.caption.weight(.semibold))
+                        .foregroundColor(Theme.gold)
+                }
+            }
+            if showAppearance {
+                Text("Tema")
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(Theme.textDim)
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 108), spacing: 8)],
+                          alignment: .leading, spacing: 8) {
+                    ForEach(AppTheme.allCases) { theme in
+                        themeChip(theme)
+                    }
+                }
+                Text("Densidade")
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(Theme.textDim)
+                HStack(spacing: 8) {
+                    ForEach(AppDensity.allCases) { density in
+                        densityChip(density)
+                    }
+                    Spacer()
+                }
+                Text("Tema e densidade valem pro app inteiro e sincronizam pelo iCloud.")
+                    .font(.caption2)
+                    .foregroundColor(Theme.textFaint)
+            }
+        }
+        .panelCard()
+    }
+
+    private func themeChip(_ theme: AppTheme) -> some View {
+        let selected = appearance.theme == theme
+        return Button {
+            appearance.theme = theme
+        } label: {
+            HStack(spacing: 7) {
+                Circle()
+                    .fill(theme.palette.accent)
+                    .frame(width: 12, height: 12)
+                Text(theme.displayName)
+                    .font(.caption.weight(.bold))
+                    .foregroundColor(Theme.textPrimary)
+                    .lineLimit(1)
+            }
+            .padding(.horizontal, 11)
+            .padding(.vertical, 8)
+            .background(Theme.inset)
+            .overlay(
+                RoundedRectangle(cornerRadius: 999)
+                    .stroke(selected ? Theme.gold : Theme.panelBorder,
+                            lineWidth: selected ? 2 : 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 999))
+        }
+    }
+
+    private func densityChip(_ density: AppDensity) -> some View {
+        let selected = appearance.density == density
+        return Button {
+            appearance.density = density
+        } label: {
+            Text(density.displayName)
+                .font(.caption.weight(.bold))
+                .foregroundColor(Theme.textPrimary)
+                .padding(.horizontal, 11)
+                .padding(.vertical, 8)
+                .background(Theme.inset)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 999)
+                        .stroke(selected ? Theme.gold : Theme.panelBorder,
+                                lineWidth: selected ? 2 : 1)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 999))
+        }
+    }
+
     private func fieldRow<Content: View>(label: String, @ViewBuilder field: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(label)
@@ -124,7 +219,7 @@ struct InputsView: View {
                 .font(.system(.callout, design: .monospaced))
                 .foregroundColor(Theme.textPrimary)
                 .padding(9)
-                .background(Color(white: 0.12))
+                .background(Theme.inset)
                 .clipShape(RoundedRectangle(cornerRadius: 7))
         }
     }
@@ -145,7 +240,7 @@ struct InputsView: View {
                 .font(.system(.caption2, design: .monospaced))
                 .foregroundColor(Theme.textPrimary)
                 .scrollContentBackground(.hidden)
-                .background(Color(white: 0.10))
+                .background(Theme.inset)
                 .clipShape(RoundedRectangle(cornerRadius: 7))
                 // Altura fixa: sem teto, o TextEditor dentro do ScrollView da
                 // aba expande até a altura de todo o HTML colado. Com 200pt
