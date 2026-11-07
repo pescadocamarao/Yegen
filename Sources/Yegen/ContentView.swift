@@ -1,51 +1,34 @@
 import SwiftUI
 
-/// v1.3 — Raiz da casca: a WKWebView em tela cheia com o Yegen web
-/// embarcado + uma barrinha nativa mínima e discreta (canto superior
-/// direito, translúcida) com as duas ações que são da casca, não da
-/// página: Backup iCloud e Restaurar. Todo o resto da experiência
-/// (abas, temas, motor, Navegar) é a página web v3.28, intacta.
+/// v1.3.1 — Raiz da casca: SÓ a WKWebView em tela cheia com o Yegen web
+/// embarcado. A barrinha nativa flutuante (Backup iCloud / Restaurar no
+/// canto superior) foi REMOVIDA a pedido do usuário — ela cobria as
+/// abas da página e atrapalhava a navegação. As ações da casca agora
+/// moram na barra inferior da própria página (web v3.29), só com
+/// símbolos: ⬆ 💾 📂 e, na casca, ☁️⬆ Backup / ☁️⬇ Restaurar, que
+/// chegam aqui pelo message handler `yegenShell`. O único resíduo
+/// nativo visível é o aviso transitório de status (some sozinho, em
+/// cima da barra da página) e os diálogos/folhas do sistema.
 struct ContentView: View {
     @StateObject private var shell = ShellController()
 
     var body: some View {
-        ZStack(alignment: .topTrailing) {
+        ZStack(alignment: .bottom) {
             WebShellView(controller: shell)
                 .ignoresSafeArea()
 
-            VStack(alignment: .trailing, spacing: 6) {
-                HStack(spacing: 6) {
-                    Button {
-                        shell.requestBackup()
-                    } label: {
-                        Label("Backup iCloud", systemImage: "icloud.and.arrow.up")
-                            .font(.caption2.weight(.semibold))
-                    }
-                    Button {
-                        shell.confirmRestore = true
-                    } label: {
-                        Label("Restaurar", systemImage: "icloud.and.arrow.down")
-                            .font(.caption2.weight(.semibold))
-                    }
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.mini)
-                .tint(.white)
-                .padding(6)
-                .background(.black.opacity(0.45), in: Capsule())
-
-                if let status = shell.status {
-                    Text(status)
-                        .font(.caption2.weight(.medium))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .background(.black.opacity(0.72), in: Capsule())
-                        .multilineTextAlignment(.trailing)
-                }
+            if let status = shell.status {
+                Text(status)
+                    .font(.caption2.weight(.medium))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(.black.opacity(0.72), in: Capsule())
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 16)
+                    // Acima da barra inferior fixa da página.
+                    .padding(.bottom, 76)
             }
-            .padding(.top, 8)
-            .padding(.trailing, 10)
         }
         .background(Color.black)
         .confirmationDialog(

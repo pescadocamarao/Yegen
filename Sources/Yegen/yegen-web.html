@@ -268,7 +268,7 @@
       .pastebtn.clear{border-color:var(--border);color:var(--muted);font-weight:700;padding:11px 13px}
       .fieldtools.small .pastebtn{padding:7px 11px;font-size:13px}
       .quickbar{position:fixed;left:0;right:0;bottom:0;z-index:60;display:flex;gap:8px;padding:8px 10px calc(8px + env(safe-area-inset-bottom));background:var(--panel);border-top:1px solid var(--border)}
-      .quickbar button{flex:1;appearance:none;padding:13px 6px;border-radius:11px;background:var(--panel2);border:1px solid var(--border);color:var(--text);font-weight:800;font-size:15px;cursor:pointer;font-family:var(--sans)}
+      .quickbar button{flex:1;appearance:none;padding:10px 4px;min-height:44px;border-radius:11px;background:var(--panel2);border:1px solid var(--border);color:var(--text);font-weight:800;font-size:20px;line-height:1.15;cursor:pointer;font-family:var(--sans)}
       .quickbar button:active{transform:translateY(1px)}
       #savedSection{scroll-margin-top:12px}
       /* ===== Densidade compacta ===== */
@@ -306,7 +306,7 @@
       details.plainfold>summary{cursor:pointer;font-weight:700;font-size:14px;color:var(--muted);list-style:none}
       details.plainfold>summary::-webkit-details-marker{display:none}
       .quickbar{padding:6px 8px calc(6px + env(safe-area-inset-bottom));gap:6px;opacity:.97}
-      .quickbar button{padding:9px 4px;font-size:13.5px;border-radius:9px;font-weight:700}
+      .quickbar button{padding:8px 4px;min-height:42px;font-size:18px;border-radius:9px;font-weight:700}
       .card h2{font-size:17px}
       .hint{font-size:13.5px}
       /* ===== v3.0: NAVEGAÇÃO POR ABAS — cabeçalho fixo, barra de abas, painéis ===== */
@@ -376,7 +376,7 @@
   <body>
     <div class="wrap">
       <div class="stickyhead">
-        <div class="headrow"><h1>Yegen</h1><span class="versionbadge" data-app-version>Yegen v3.28</span></div>
+        <div class="headrow"><h1>Yegen</h1><span class="versionbadge" data-app-version>Yegen v3.29</span></div>
         <nav class="tabbar" role="tablist" aria-label="Etapas do Yegen">
           <button type="button" class="tabbtn on" data-tab-btn="entradas" role="tab" aria-selected="true"><span class="tic">📥</span>Entradas</button>
           <button type="button" class="tabbtn" data-tab-btn="lista" role="tab" aria-selected="false"><span class="tic">📋</span>Lista</button>
@@ -563,7 +563,7 @@
            Desfazer devolve o campo ao automático. -->
       <section class="tabpanel" data-tabpanel="navegar" role="tabpanel" aria-label="Navegar" hidden>
       <section class="card" id="navCard326">
-        <h2><span class="n">🧭</span> Navegar — seletor visual <span class="testbadge326">VERSÃO DE TESTE · v3.28</span></h2>
+        <h2><span class="n">🧭</span> Navegar — seletor visual <span class="testbadge326">VERSÃO DE TESTE · v3.29</span></h2>
         <p class="hint">Navegue pela página colada e <b>toque nos blocos</b> pra escolher os seletores com o dedo: o elemento tocado acende, os <b>irmãos de mesma assinatura acendem juntos</b> (com a contagem), e os botões de <b>papel</b> mandam o seletor calculado <b>pra rule</b> — o JSON passa a usar exatamente esse seletor, declarado no Debug como <b>“seletor escolhido na aba Navegar”</b>. Desfazer uma atribuição devolve aquele campo ao automático.</p>
         <div class="alert warn">🧪 <b>Escopo desta versão de teste:</b> funciona sobre o <b>HTML colado</b> (lista e detalhe). Os <b>scripts da página NÃO rodam</b> na prévia — o que depende de JavaScript pode aparecer diferente do site ao vivo (e embeds/iframes da página são removidos da prévia). <b>Papéis de vídeo ficam FORA</b> desta v1 de teste — o vídeo continua nas abas atuais (Detalhe).</div>
         <label class="flabel">Fonte da prévia — qual HTML colado você quer navegar?</label>
@@ -743,7 +743,8 @@
       <details class="guide">
         <summary>📜 Versões e novidades</summary>
         <ul class="tight">
-          <li><b>v3.28 (atual)</b> — Modo Wizard removido a pedido — de volta ao comportamento da v3.26</li>
+          <li><b>v3.29 (atual)</b> — Barra inferior só com símbolos (⬆ 💾 📂), discreta, sem textos; no app (casca), a mesma barra ganha ☁️⬆ Backup e ☁️⬇ Restaurar do iCloud — a barrinha nativa que flutuava no topo e cobria as abas foi removida</li>
+          <li><b>v3.28</b> — Modo Wizard removido a pedido — de volta ao comportamento da v3.26</li>
           <li><b>v3.26</b> — <b>ABA NAVEGAR: SELETOR VISUAL (VERSÃO DE TESTE)</b> (base v3.25, sem regredir nada das v2.5–v3.25; salvos migram). Pedido dele: <b>“crie uma nova aplicação no yegen, em uma aba separada onde eu navego pela pagina e seleciono os blocos de seletores — vai pra rule; primeiro uma versão de teste”</b>. <b>Nova aba 🧭 Navegar</b> (8ª aba, marcada <b>VERSÃO DE TESTE</b> na própria aba): (1) renderiza o <b>HTML já colado</b> — ele escolhe a fonte, <b>lista</b> ou <b>detalhe</b> — numa <b>prévia visual navegável</b> (iframe com sandbox <b>SEM scripts</b>: scripts, iframes, formulários e handlers da página são removidos da cópia da prévia; rolagem livre e <b>zoom tocável</b> (−/+ de 50% a 200%) pro iPhone) com os <b>links neutralizados</b> — o clique é interceptado, então <b>tocar SELECIONA, nunca navega pra fora</b>; (2) tocar num elemento: ele acende <b>forte</b> e, quando faz parte de um bloco que se repete, <b>TODOS os irmãos de mesma assinatura</b> (tag + classes estáveis) acendem <b>juntos</b>, com a contagem (<b>“N blocos como este”</b>); o Yegen mostra as <b>formas candidatas</b> do seletor calculado — <b>mínimo primeiro</b> (a forma mais simples que identifica o elemento vem antes, com a contagem de cada forma; a do bloco precisa casar <b>exatamente</b> o grupo); (3) <b>papéis por toque</b>: na <b>lista</b> — Item da lista, Título, Capa, Link/idCode (o idCode segue a <b>lei do seletor mínimo da v3.15</b>: <code>a</code> quando o primeiro link de cada item é o do detalhe, <code>this</code> no item-âncora); no <b>detalhe</b> — Título, Capa, Bloco de fotos/galeria (o bloco vira o bloco de fotos em uso: <code>pictureRule</code> + <code>galleryRule</code> com os seletores escolhidos); cada atribuição mostra <b>na hora o valor que o seletor extrai</b> (texto/atributo do 1º item); (4) <b>VAI PRA RULE</b>: as atribuições moram em <code>state.navAssign326</code>, o <b>MESMO estado soberano das seleções manuais</b> — ao gerar/atualizar o JSON, os campos correspondentes usam <b>exatamente</b> os seletores escolhidos na aba Navegar (a capa do detalhe continua passando pela lei <code>this</code> da v3.21) e o <b>Debug declara cada um</b> com a origem <b>“seletor escolhido na aba Navegar”</b> + se foi aplicado; <b>desfazer</b> uma atribuição devolve aquele campo ao <b>automático</b>; a atribuição carrega a <b>assinatura (sig) do HTML</b> em que foi feita — HTML colado trocado depois = atribuição <b>obsoleta, declarada no Debug e NÃO aplicada</b> (nada de seletor velho em HTML novo); as atribuições <b>migram nos salvos</b> (salvo antigo nasce sem nenhuma); (5) <b>escopo declarado na aba</b>: funciona sobre o HTML colado (lista e detalhe); <b>scripts NÃO rodam</b> na prévia (o que depende de JS pode aparecer diferente do site ao vivo); <b>papéis de vídeo FORA</b> desta v1 de teste (o vídeo continua nas abas atuais). A bancada v3.0 passou a esperar <b>8 abas</b> (atualizada, como a v3.21 fez com as asserções de capa). <b>Bancada nova da v3.26 (v326Assertions):</b> com a fixture de lista do exemplo (<code>article.loop-post.video-item</code> ×6) — renderizar/tocar num item → o bloco inteiro acende com a contagem certa (6); atribuir Item/Título/Capa/Link pelo caminho real dos botões → o JSON usa exatamente esses seletores (<code>h3.entry-title a</code>, <code>img</code>/<code>data-src</code>, <code>a</code>) com a origem declarada no Debug; desfazer o título devolve o campo ao automático sem tocar nas outras atribuições. Suítes v2.5–v3.25 verdes.</li>
           <li><b>v3.25</b> — <b>SELEÇÃO MANUAL DE VÍDEO DESTRAVADA — a lista de candidatos volta a ser a SUA</b> (base v3.24, sem regredir nada das v2.5–v3.24; salvos migram). Bug reportado por ele: <b>“o Yegen está com bug que não consigo selecionar outras regras de play de vídeo — ele seleciona o mais provável e não consigo selecionar outras opções”</b>. <b>Causa provada em bancada viva</b> (reproduzida com o exemplo embutido e com fixture própria): o estado interno estava CERTO — clique, <code>selectedVideo</code> e <code>videoChoice</code> registravam a escolha dele; quem mentia era a <b>TELA</b>. As bancadas internas v3.16–v3.24 desenham os cartões de vídeo <b>das fixtures delas</b> no <code>#videoSlot</code> <b>REAL</b> da página (os <code>renderSlotXXX</code>) pra conferir os selos no DOM — e as <b>duas últimas do passe</b> (v3.23/v3.24) restauravam o estado no <code>finally</code> mas <b>não repintavam o slot</b>. Como <b>toda</b> interação chama <code>updateRule()</code> → o passe inteiro das bancadas, a lista visível passava a ser a <b>pintura da fixture da v3.24</b> (o candidato tokenVars dela, “selecionado”), e o clique dele caía no <b>índice da lista real, invisível</b> — outro candidato entrava, a tela nunca mostrava a escolha, e o ranking parecia soberano. <b>Correção</b> (a mesma doutrina da fonte única da v3.10, que já repintava o painel JSON depois das bancadas): o <code>updateRule()</code> agora repinta <b>também o slot de vídeo</b> (<code>renderVideo()</code>) a partir do <b>estado RESTAURADO</b>, depois do passe — a <b>última pintura é sempre a do estado real</b>: os candidatos da análise dele, com o <b>SELECIONADO</b> onde ele clicou e o selo <b>“SELECIONADO por você”</b>. <b>Bancada nova da v3.25 (v325Assertions):</b> estado simulado com 2 candidatos e o ranking pré-selecionando o 1º → <b>clique REAL</b> (<code>pickVideoCandidate</code>, o caminho da UI) no 2º → depois do <code>updateRule</code> completo, o <b>estado E o HTML do slot</b> mostram a escolha manual (selo “SELECIONADO por você”, URL do clicado, <b>nenhum resíduo de fixture</b> — assinatura madou-exemplo fora do slot). Bancadas v2.5–v3.24 verdes.</li>
           <li><b>v3.24</b> — <b>SALTO VIA IFRAME COM PLAYLIST ASSINADA POR TOKEN EM VARS JS</b> (base v3.23, sem regredir nada das v2.5–v3.23; salvos migram). Lição da <b>rodada 3</b> de mineração de rules — site <b>madou.club</b>, provada em simulação de ponta a ponta em 2026-11-03: o detalhe tem <b>UM iframe de embed de host próprio</b> (ex.: <code>dash.madou.club/share/{id}</code>) e a página do <b>embed</b> traz em HTML cru, em <b>vars JS adjacentes</b>, o token JWT e o caminho da playlist — <code>var token = "…"; var m3u8 = '/videos/{id}/index.m3u8';</code> — e a playlist só responde <b>200</b> quando chamada <b>IMEDIATAMENTE</b> com <code>?token=</code> (token de vida curtíssima, ~100s; os segmentos <b>.ts</b> e a chave <b>AES-128</b> respondem 200 <b>sem</b> token). <b>Família nova (tokenVars):</b> (1) o candidato detecta o <b>par de vars</b> (token + path de .m3u8) na página do embed alcançada pelo <b>salto via iframe</b> (<code>photoAlbumLink</code> — a fiação embedHop da v3.17, com o embed colado no slot da página de vídeo); (2) o <code>videoRule</code> gerado usa <b>regex de DOIS grupos</b> sobre o body da página do embed — <code>var token = "([^"]+)";\s*var m3u8 = '([^']+)'</code> — com replacement montando a <b>URL absoluta assinada</b>: <code>https://&lt;host-do-embed&gt;$2?token=$1</code> (replacement com $1/$2 <b>puros por grupo</b>, sem sufixo <code>{source:}</code>); (3) token preso à sessão/vida curta <b>NÃO rebaixa nem reprova</b> o candidato (mesma doutrina vigente do token preso ao IP/sessão da v3.17 — o selo 🔒 é aviso, nunca demissão), a guarda do HTML cru o trata como <b>família derivada</b> (a URL é montada de duas vars, não está literal no cru) e <b>AES-128</b> padrão na playlist também <b>não reprova</b>; (4) o cartão ganha o selo <b>“🎟 salto via iframe + token em vars JS”</b> e o <b>Debug declara a família</b>, o par de vars encontrado, a URL assinada montada e o aviso de que a playlist exige <b>chamada imediata</b> com o token. <b>Bancada nova da v3.24 (v324Assertions):</b> fixture estilo madou.club (detalhe com iframe único + embed com var token/var m3u8) → candidato confirmado com a URL assinada montada, videoRule com a regex de dois grupos e o replacement assinado, photoAlbumLink pro iframe, nenhum rebaixamento pelo token; controle: embed sem o par de vars → nenhum candidato da família. Bancadas v2.5–v3.23 verdes.</li>
@@ -980,14 +981,14 @@
       </details>
 
       <p class="sub" style="text-align:center">Feito para montar rules do Yealico a partir do HTML real do site — valide sempre no app: análise fora do Yealico não garante que ele vai carregar e tocar.</p>
-      <p class="footver"><span class="versionbadge" data-app-version>Yegen v3.28</span></p>
+      <p class="footver"><span class="versionbadge" data-app-version>Yegen v3.29</span></p>
       </section>
 
     </div>
     <nav class="quickbar" aria-label="Atalhos rápidos">
-      <button type="button" id="btnBarTop">⬆ Topo</button>
-      <button type="button" id="btnBarSave">💾 Salvar</button>
-      <button type="button" id="btnBarSaved">📂 Salvos</button>
+      <button type="button" id="btnBarTop" aria-label="Topo" title="Topo">⬆️</button>
+      <button type="button" id="btnBarSave" aria-label="Salvar" title="Salvar">💾</button>
+      <button type="button" id="btnBarSaved" aria-label="Salvos" title="Salvos">📂</button>
     </nav>
     <div class="toast" id="toast"></div>
     <!-- v2.6.1: painel de entrega — aparece quando a folha de compartilhamento
@@ -1007,7 +1008,7 @@
     <script>
       "use strict";
       // Versão do app — regra: função nova sobe o 2º número (1.5 → 1.6) + linha no histórico; correção pequena sobe o 3º (1.5.1).
-      var APP_VERSION = "3.28";
+      var APP_VERSION = "3.29";
       var $ = function(id){ return document.getElementById(id); };
       document.querySelectorAll("[data-app-version]").forEach(function(el){ el.textContent = "Yegen v" + APP_VERSION; });
       var state = {
@@ -17397,6 +17398,25 @@
         var s = $("savedSection");
         if(s) s.scrollIntoView({ behavior: "smooth", block: "start" });
       });
+      /* v3.29: na casca (app iOS), a barra inferior ganha os botões de
+         nuvem — Backup/Restaurar do iCloud são ações da casca, pedidas
+         por mensagem (window.webkit.messageHandlers.yegenShell). Fora
+         da casca (navegador) os dois botões nem entram no DOM. */
+      if (window.__yegenShell) {
+        var qb329 = document.querySelector(".quickbar");
+        var mh329 = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.yegenShell;
+        if (qb329 && mh329) {
+          var mkBtn329 = function(id, glyph, label, action){
+            var b = document.createElement("button");
+            b.type = "button"; b.id = id; b.textContent = glyph;
+            b.setAttribute("aria-label", label); b.title = label;
+            b.addEventListener("click", function(){ mh329.postMessage({ action: action }); });
+            return b;
+          };
+          qb329.appendChild(mkBtn329("btnBarBackup", "☁️⬆", "Backup iCloud", "backup"));
+          qb329.appendChild(mkBtn329("btnBarRestore", "☁️⬇", "Restaurar do iCloud", "restore"));
+        }
+      }
       /* ============ DEBUG (v1.6) ============ */
       if($("btnGenDebug")) $("btnGenDebug").addEventListener("click", generateDebugReport);
       if($("btnQuickDebug")) $("btnQuickDebug").addEventListener("click", function(){

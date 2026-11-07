@@ -33,8 +33,17 @@ import UIKit
 //    (preservando o `id`; sem id, gera um) e reload da página, que
 //    relê o banco e renderiza — a semântica é a do banco, sem passar
 //    pelo dedup nome|siteUrl do importar da página (declarado).
+//    v1.3.1: quem DISPARA backup/restauro é a barra inferior da própria
+//    página (botões ☁️⬆/☁️⬇, que ela só mostra quando detecta a flag
+//    `window.__yegenShell`), via message handler `yegenShell` com
+//    {action:"backup"|"restore"}. A barrinha nativa flutuante que
+//    cobria as abas no topo foi removida a pedido do usuário.
 
 enum ShellScripts {
+    /// Flag pra página (v3.29) saber que está rodando dentro da casca:
+    /// só assim ela injeta os botões de nuvem na barra inferior dela.
+    static let shellFlag = "window.__yegenShell = true;"
+
     static let bridge = """
     (function(){
       if (window.__yegenShellBridge) return;
@@ -268,7 +277,21 @@ final class ShellController: NSObject, ObservableObject {
         }
     }
 
-    // MARK: Ações da barra nativa
+    // MARK: Ações da casca (disparadas pela barra inferior da página)
+
+    /// A página pede {action:"backup"|"restore"} pelo handler
+    /// `yegenShell`. O restauro passa ANTES pela confirmação nativa
+    /// (confirmationDialog na ContentView, ligado a `confirmRestore`).
+    fileprivate func handleShellAction(_ action: String) {
+        switch action {
+        case "backup":
+            requestBackup()
+        case "restore":
+            confirmRestore = true
+        default:
+            break
+        }
+    }
 
     func requestBackup() {
         webView?.evaluateJavaScript(
@@ -362,12 +385,16 @@ struct WebShellView: UIViewRepresentable {
         // file:// ser estável entre aberturas.
         config.websiteDataStore = .default()
         config.userContentController.addUserScript(
+            WKUserScript(source: ShellScripts.shellFlag,
+                         injectionTime: .atDocumentStart,
+                         forMainFrameOnly: false))
+        config.userContentController.addUserScript(
             WKUserScript(source: ShellScripts.bridge,
                          injectionTime: .atDocumentStart,
                          forMainFrameOnly: false))
         let coord = context.coordinator
         for name in ["yegenPaste", "yegenCopy", "yegenDownload",
-                     "yegenBackupData", "yegenRestoreResult"] {
+                     "yegenBackupData", "yegenRestoreResult", "yegenShell"] {
             config.userContentController.add(coord, name: name)
         }
 
@@ -443,6 +470,8 @@ struct WebShellView: UIViewRepresentable {
                 controller.handleRestoreResult(ok: body["ok"] as? Bool ?? false,
                                                count: body["count"] as? Int ?? 0,
                                                error: body["error"] as? String)
+            case "yegenShell":
+                controller.handleShellAction(body["action"] as? String ?? "")
             default:
                 break
             }
