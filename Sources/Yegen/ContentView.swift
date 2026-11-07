@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ContentView: View {
     @EnvironmentObject var store: YegenStore
+    @EnvironmentObject var appearance: AppearanceStore
     @State private var tab = 0
 
     var body: some View {
@@ -30,11 +31,14 @@ struct ContentView: View {
         }
         .accentColor(Theme.gold)
         .background(Theme.background)
-        // Interface um degrau mais densa no app inteiro: todas as fontes usam
-        // text styles dinâmicos, então fixar o Dynamic Type em .medium (o
-        // padrão do sistema é .large) reduz títulos e corpos juntos,
-        // preservando a hierarquia entre eles.
-        .environment(\.dynamicTypeSize, .medium)
+        // Aparência (v1.2): tema e densidade valem pro app inteiro. Trocar o
+        // tema reconstrói a árvore (`.id`) pra todos os tokens de `Theme`
+        // relerem a paleta nova; o Dynamic Type acompanha a densidade
+        // (Confortável = .medium, Compacto = .small — um degrau abaixo do
+        // padrão do sistema, como o app sempre foi).
+        .id(appearance.theme.rawValue + "|" + appearance.density.rawValue)
+        .environment(\.dynamicTypeSize, appearance.density.dynamicTypeSize)
+        .preferredColorScheme(appearance.theme.isLight ? .light : .dark)
     }
 }
 
@@ -64,13 +68,14 @@ struct TabScroll<Content: View>: View {
     let title: String
     /// Quando presente, mostra o botão "Concluir" na barra do teclado.
     var onKeyboardDismiss: (() -> Void)? = nil
+    @EnvironmentObject var appearance: AppearanceStore
     @ViewBuilder let content: () -> Content
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 14) { content() }
-                    .padding(14)
+                VStack(alignment: .leading, spacing: appearance.density.stackSpacing) { content() }
+                    .padding(appearance.density.stackSpacing)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             .scrollDismissesKeyboard(.interactively)

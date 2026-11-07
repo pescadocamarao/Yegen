@@ -37,6 +37,19 @@ targets:
               - UISceneConfigurationName: Default Configuration
     dependencies:
       - package: SwiftSoup
+    # iCloud (v1.2): contêiner Documents pros Salvos + KV Store pras
+    # preferências de aparência. O XcodeGen GERA o arquivo .entitlements a
+    # partir destas properties (mesmo mecanismo do Info.plist). Na build
+    # unsigned (CI) isto é inerte; nas rotas assinadas pode exigir a
+    # capability iCloud habilitada no App ID (passo do usuário no portal).
+    entitlements:
+      path: Sources/Yegen/Yegen.entitlements
+      properties:
+        com.apple.developer.icloud-container-identifiers:
+          - iCloud.com.seidao.yegen
+        com.apple.developer.icloud-services:
+          - CloudDocuments
+        com.apple.developer.ubiquity-kvstore-identifier: "$(TeamIdentifierPrefix)com.seidao.yegen"
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.seidao.yegen
