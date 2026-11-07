@@ -36,11 +36,28 @@ struct FieldRule: Equatable {
 struct YegenInputs: Codable, Equatable {
     var ruleName: String = ""
     var siteUrl: String = ""     // URL da página de lista (ele cola a pág. 2 — o motor normaliza)
-    var indexUrl: String = ""    // URL inicial digitada (reserva)
-    var searchUrl: String = ""   // URL de busca digitada
+    var indexUrl: String = ""    // URL inicial (automática da lista; editável)
+    var detailUrl: String = ""   // URL do detalhe digitada por ele
     var listHTML: String = ""
     var detailHTML: String = ""
     var videoHTML: String = ""   // página de vídeo separada (opcional)
+}
+
+extension YegenInputs {
+    /// Decodificação tolerante: testes salvos por versões antigas não têm
+    /// `detailUrl` (e têm a finada `searchUrl` digitada, hoje ignorada —
+    /// a busca agora é derivada automaticamente na análise).
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.init()
+        ruleName = try c.decodeIfPresent(String.self, forKey: .ruleName) ?? ""
+        siteUrl = try c.decodeIfPresent(String.self, forKey: .siteUrl) ?? ""
+        indexUrl = try c.decodeIfPresent(String.self, forKey: .indexUrl) ?? ""
+        detailUrl = try c.decodeIfPresent(String.self, forKey: .detailUrl) ?? ""
+        listHTML = try c.decodeIfPresent(String.self, forKey: .listHTML) ?? ""
+        detailHTML = try c.decodeIfPresent(String.self, forKey: .detailHTML) ?? ""
+        videoHTML = try c.decodeIfPresent(String.self, forKey: .videoHTML) ?? ""
+    }
 }
 
 // MARK: - Resultado da análise da lista

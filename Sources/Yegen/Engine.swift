@@ -19,6 +19,88 @@ enum Engine {
         return HTMLKit.origin(of: base)
     }
 
+    // MARK: - Preenchimento automático (a partir da URL da lista)
+
+    /// Nome do site a partir do host: tira o "www" e capitaliza a primeira
+    /// letra do domínio principal (meusite.com → "Meusite").
+    static func deriveSiteName(from urlString: String) -> String? {
+        var host = HTMLKit.host(of: urlString).lowercased()
+        if host.hasPrefix("www.") { host = String(host.dropFirst(4)) }
+        let labels = host.split(separator: ".").map(String.init)
+        guard labels.count >= 2 else { return nil }
+        // TLDs de duas partes comuns (co.jp, com.br…): o nome é o rótulo anterior.
+        let twoPartTLDs: Set<String> = ["co.jp", "com.br", "co.uk", "com.au",
+                                        "co.kr", "ne.jp", "or.jp", "com.tw"]
+        let suffix = labels.suffix(2).joined(separator: ".")
+        let nameIndex = (labels.count >= 3 && twoPartTLDs.contains(suffix))
+            ? labels.count - 3 : labels.count - 2
+        let main = labels[nameIndex]
+        guard let first = main.first else { return nil }
+        return String(first).uppercased() + main.dropFirst()
+    }
+
+    /// URL inicial automática: a raiz do site (scheme + host + "/").
+    static func deriveIndexURL(from urlString: String) -> String {
+        let origin = HTMLKit.origin(of: urlString)
+        return origin.isEmpty ? "" : origin + "/"
+    }
+
+    // MARK: - URL de busca automática (formulário no HTML da lista)
+
+    /// Procura o formulário de busca da página (input type="search" ou com
+    /// name em {s, q, keyword, search, query}) e monta a URL no padrão do
+    /// site com {keyword}: query (?s={keyword}) ou caminho (/search/{keyword}),
+    /// conforme a action do form. Sem formulário, retorna nil.
+    static func detectSearchURL(doc: Document, origin: String, pageURL: String) -> String? {
+        let searchNames: Set<String> = ["s", "q", "keyword", "search", "query"]
+        for form in HTMLKit.select(doc, "form") {
+            var paramName: String? = nil
+            for input in HTMLKit.select(form, "input") {
+                let name = input.attrOrEmpty("name")
+                let type = input.attrOrEmpty("type").lowercased()
+                if searchNames.contains(name.lowercased()) {
+                    paramName = name
+                    break
+                }
+                if type == "search" {
+                    paramName = name.isEmpty ? "s" : name
+                    break
+                }
+            }
+            guard let param = paramName else { continue }
+
+            let rawAction = form.attrOrEmpty("action")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            var base = (rawAction.isEmpty || rawAction.hasPrefix("#")
+                        || rawAction.hasPrefix("javascript"))
+                ? pageURL : HTMLKit.absolutize(rawAction, origin: origin)
+            if let hash = base.firstIndex(of: "#") { base = String(base[..<hash]) }
+            guard !base.isEmpty else { continue }
+
+            if let q = base.firstIndex(of: "?") {
+                // Já tem query: troca o valor do parâmetro ou acrescenta.
+                let head = String(base[..<q])
+                var pairs = String(base[base.index(after: q)...])
+                    .split(separator: "&", omittingEmptySubsequences: true).map(String.init)
+                if let i = pairs.firstIndex(where: {
+                    $0.split(separator: "=", maxSplits: 1).first.map(String.init) == param
+                }) {
+                    pairs[i] = "\(param)={keyword}"
+                } else {
+                    pairs.append("\(param)={keyword}")
+                }
+                return head + "?" + pairs.joined(separator: "&")
+            }
+            // Sem query: action terminando em "search" → padrão de caminho.
+            let lastSegment = base.split(separator: "/").last.map(String.init) ?? ""
+            if lastSegment.lowercased() == "search" {
+                return (base.hasSuffix("/") ? base : base + "/") + "{keyword}"
+            }
+            return base + "?\(param)={keyword}"
+        }
+        return nil
+    }
+
     // MARK: - Utilidades
 
     /// Forma de uma URL com os números trocados por # (comparar rotas).
@@ -632,7 +714,7 @@ enum Engine {
 
     static func buildRule(inputs: YegenInputs, list: ListAnalysis?, detail: DetailAnalysis?,
                           categories: [CategoryLink], pagination: PaginationInfo,
-                          chosenVideo: VideoCandidate?) -> JVal {
+                          chosenVideo: VideoCandidate?, searchUrl: String) -> JVal {
         let origin = siteOrigin(inputs)
         var root: [(String, JVal)] = []
         root.append(("name", .str(inputs.ruleName.isEmpty ? "Sem nome" : inputs.ruleName)))
@@ -654,8 +736,9 @@ enum Engine {
             : pagination.indexUrl
         root.append(("indexUrl", .str(indexUrl)))
         root.append(("detailUrl", .str("{idCode:}")))
-        let hasSearch = !inputs.searchUrl.isEmpty
-        if hasSearch { root.append(("searchUrl", .str(inputs.searchUrl))) }
+        // A busca é automática: derivada do formulário no HTML da lista.
+        let hasSearch = !searchUrl.isEmpty
+        if hasSearch { root.append(("searchUrl", .str(searchUrl))) }
 
         // indexRule / searchRule
         if let list, !list.itemSelector.isEmpty {

@@ -10,14 +10,14 @@ struct InputsView: View {
 
     /// Campos e editores que podem receber o teclado nesta aba.
     enum FocusField: Hashable {
-        case ruleName, siteUrl, indexUrl, searchUrl
+        case ruleName, siteUrl, indexUrl, detailUrl
         case listHTML, detailHTML, videoHTML
     }
 
     var body: some View {
         TabScroll(title: "Entradas", onKeyboardDismiss: { focusedField = nil }) {
             VStack(alignment: .leading, spacing: 6) {
-                Text("Yegen nativo v1.0.6")
+                Text("Yegen nativo v1.0.7")
                     .font(.title3.weight(.bold))
                     .foregroundColor(Theme.textPrimary)
                 Text("Cole os HTMLs das páginas e toque em Analisar. A rule sai na aba JSON.")
@@ -38,16 +38,16 @@ struct InputsView: View {
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                 }
-                fieldRow(label: "URL inicial (reserva)") {
+                fieldRow(label: "URL inicial (automática da lista — pode editar)") {
                     TextField("https://site.com/", text: $store.inputs.indexUrl)
                         .focused($focusedField, equals: .indexUrl)
                         .keyboardType(.URL)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                 }
-                fieldRow(label: "URL de busca (com {keyword})") {
-                    TextField("https://site.com/?s={keyword}", text: $store.inputs.searchUrl)
-                        .focused($focusedField, equals: .searchUrl)
+                fieldRow(label: "URL do detalhe") {
+                    TextField("https://site.com/detalhe/123.html", text: $store.inputs.detailUrl)
+                        .focused($focusedField, equals: .detailUrl)
                         .keyboardType(.URL)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
@@ -100,6 +100,11 @@ struct InputsView: View {
                     .font(.footnote)
                     .foregroundColor(Theme.ok)
             }
+        }
+        .onChange(of: store.inputs.siteUrl) { _ in
+            // Colou/editou a URL da lista: nome e URL inicial se preenchem
+            // sozinhos (só onde estiver vazio — o que ele digitou é soberano).
+            store.autofillFromListURL()
         }
         .alert("Salvar teste", isPresented: $showSaveAlert) {
             TextField("Nome do teste", text: $saveName)

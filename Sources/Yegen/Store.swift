@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import SwiftUI
 
@@ -13,12 +14,55 @@ final class YegenStore: ObservableObject {
     @Published var statusMessage: String = ""
     /// Análise rodando fora da main thread (parsing pesado não trava a UI).
     @Published var isBusy: Bool = false
+    /// URL de busca derivada automaticamente do formulário no HTML da
+    /// lista (não é campo editável — vive só dentro da rule gerada).
+    @Published var derivedSearchUrl: String = ""
 
     /// Chave da seleção manual de vídeo (família|URL) — sobrevive à reanálise.
     @Published private(set) var selectedVideoKey: String?
     private var analyzedSnapshot: YegenInputs?
 
-    init() { loadSavedTests() }
+    // MARK: - Salvamento automático das entradas
+
+    private static let inputsKey = "yegen.inputs.v1"
+    private var inputsCancellable: AnyCancellable?
+
+    init() {
+        // Restaura as entradas como estavam ao fechar o app.
+        if let data = UserDefaults.standard.data(forKey: Self.inputsKey),
+           let restored = try? JSONDecoder().decode(YegenInputs.self, from: data) {
+            inputs = restored
+        }
+        loadSavedTests()
+        // Toda alteração em qualquer campo salva sozinha (com um respiro
+        // de 300ms pra digitação não gravar a cada toque).
+        inputsCancellable = $inputs
+            .debounce(for: .milliseconds(300), scheduler: RunLoop.main)
+            .sink { [weak self] value in self?.persistInputs(value) }
+    }
+
+    private func persistInputs(_ value: YegenInputs) {
+        if let data = try? JSONEncoder().encode(value) {
+            UserDefaults.standard.set(data, forKey: Self.inputsKey)
+        }
+    }
+
+    // MARK: - Preenchimento automático (soberano: só campos vazios)
+
+    /// Ao colar/editar a URL da lista: deriva o nome da rule (do host) e a
+    /// URL inicial (raiz do site) — somente nos campos ainda vazios; o que
+    /// ele digitou nunca é sobrescrito.
+    func autofillFromListURL() {
+        let url = inputs.siteUrl
+        guard !url.isEmpty else { return }
+        if inputs.ruleName.isEmpty, let name = Engine.deriveSiteName(from: url) {
+            inputs.ruleName = name
+        }
+        if inputs.indexUrl.isEmpty {
+            let root = Engine.deriveIndexURL(from: url)
+            if !root.isEmpty { inputs.indexUrl = root }
+        }
+    }
 
     var isStale: Bool { analyzedSnapshot != inputs }
     var hasAnalysis: Bool { listAnalysis != nil || detailAnalysis != nil }
@@ -48,7 +92,8 @@ final class YegenStore: ObservableObject {
                 Self.computeAnalysis(inputs: snapshot)
             }
             typealias AnalysisResult = (list: ListAnalysis?, pagination: PaginationInfo,
-                                        categories: [CategoryLink], detail: DetailAnalysis?)
+                                        categories: [CategoryLink], detail: DetailAnalysis?,
+                                        search: String)
             let finished: AnalysisResult? = await withTaskGroup(of: AnalysisResult?.self) { group in
                 group.addTask { await compute.value }
                 group.addTask {
@@ -64,6 +109,7 @@ final class YegenStore: ObservableObject {
                 pagination = result.pagination
                 categories = result.categories
                 detailAnalysis = result.detail
+                derivedSearchUrl = result.search
                 // A seleção manual é soberana: se o candidato ainda existe, ela fica.
                 if let key = previousKey,
                    !(detailAnalysis?.videos.contains { videoKey($0) == key } ?? false) {
@@ -85,16 +131,20 @@ final class YegenStore: ObservableObject {
     /// Parte pesada da análise — tipos de valor puros, segura fora da main.
     private static func computeAnalysis(inputs: YegenInputs)
         -> (list: ListAnalysis?, pagination: PaginationInfo,
-            categories: [CategoryLink], detail: DetailAnalysis?) {
+            categories: [CategoryLink], detail: DetailAnalysis?, search: String) {
         let list = Engine.analyzeList(inputs: inputs)
         let pagination = Engine.detectPagination(inputs: inputs)
         var categories: [CategoryLink] = []
+        var search = ""
         if let doc = Engine.parse(inputs.listHTML) {
-            categories = Engine.detectCategories(doc: doc, list: list,
-                                                 origin: Engine.siteOrigin(inputs))
+            let origin = Engine.siteOrigin(inputs)
+            categories = Engine.detectCategories(doc: doc, list: list, origin: origin)
+            let pageURL = !inputs.siteUrl.isEmpty
+                ? Engine.normalizeToPage1(inputs.siteUrl) : inputs.indexUrl
+            search = Engine.detectSearchURL(doc: doc, origin: origin, pageURL: pageURL) ?? ""
         }
         let detail = Engine.analyzeDetail(inputs: inputs, list: list)
-        return (list, pagination, categories, detail)
+        return (list, pagination, categories, detail, search)
     }
 
     // MARK: - Vídeo (seleção manual soberana)
@@ -132,13 +182,14 @@ final class YegenStore: ObservableObject {
     func ruleJSON() -> String {
         Engine.buildRule(inputs: inputs, list: listAnalysis, detail: detailAnalysis,
                          categories: categories, pagination: pagination,
-                         chosenVideo: chosenVideo).serialized()
+                         chosenVideo: chosenVideo, searchUrl: derivedSearchUrl).serialized()
     }
 
     func debugReport() -> String {
         DebugReport.build(inputs: inputs, list: listAnalysis, detail: detailAnalysis,
                           categories: categories, pagination: pagination,
-                          chosenVideo: chosenVideo, jsonReady: ruleReady)
+                          chosenVideo: chosenVideo, jsonReady: ruleReady,
+                          searchUrl: derivedSearchUrl)
     }
 
     // MARK: - Salvos (persistência local)

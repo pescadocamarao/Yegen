@@ -7,7 +7,8 @@ enum DebugReport {
 
     static func build(inputs: YegenInputs, list: ListAnalysis?, detail: DetailAnalysis?,
                       categories: [CategoryLink], pagination: PaginationInfo,
-                      chosenVideo: VideoCandidate?, jsonReady: Bool) -> String {
+                      chosenVideo: VideoCandidate?, jsonReady: Bool,
+                      searchUrl: String) -> String {
         var lines: [String] = []
         let df = DateFormatter()
         df.locale = Locale(identifier: "pt_BR")
@@ -30,7 +31,8 @@ enum DebugReport {
         lines.append("== ENTRADAS ==")
         lines.append("siteUrl digitada: \(inputs.siteUrl.isEmpty ? "(vazia)" : inputs.siteUrl)")
         lines.append("indexUrl digitada: \(inputs.indexUrl.isEmpty ? "(vazia)" : inputs.indexUrl)")
-        lines.append("searchUrl digitada: \(inputs.searchUrl.isEmpty ? "(vazia)" : inputs.searchUrl)")
+        lines.append("detailUrl digitada: \(inputs.detailUrl.isEmpty ? "(vazia)" : inputs.detailUrl)")
+        lines.append("searchUrl automática (do formulário da lista): \(searchUrl.isEmpty ? "(nenhuma derivada)" : searchUrl)")
         lines.append("HTML da lista presente? \(inputs.listHTML.isEmpty ? "NÃO" : "SIM (\(inputs.listHTML.count) caracteres)")")
         lines.append("HTML do detalhe presente? \(inputs.detailHTML.isEmpty ? "NÃO" : "SIM (\(inputs.detailHTML.count) caracteres)")")
         lines.append("HTML da página de vídeo presente? \(inputs.videoHTML.isEmpty ? "NÃO" : "SIM (\(inputs.videoHTML.count) caracteres)")")
