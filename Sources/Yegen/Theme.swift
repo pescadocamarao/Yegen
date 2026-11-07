@@ -147,45 +147,21 @@ final class AppearanceStore: ObservableObject {
 
     private static let themeKey = "yegen.appearance.theme"
     private static let densityKey = "yegen.appearance.density"
-    private var kvObserver: NSObjectProtocol?
 
     init() {
-        let kv = NSUbiquitousKeyValueStore.default
-        kv.synchronize()
-        let themeRaw = kv.string(forKey: Self.themeKey)
-            ?? UserDefaults.standard.string(forKey: Self.themeKey)
+        let themeRaw = UserDefaults.standard.string(forKey: Self.themeKey)
             ?? AppTheme.meiaNoite.rawValue
-        let densityRaw = kv.string(forKey: Self.densityKey)
-            ?? UserDefaults.standard.string(forKey: Self.densityKey)
+        let densityRaw = UserDefaults.standard.string(forKey: Self.densityKey)
             ?? AppDensity.confortavel.rawValue
         theme = AppTheme(rawValue: themeRaw) ?? .meiaNoite
         density = AppDensity(rawValue: densityRaw) ?? .confortavel
         Self.currentPalette = theme.palette
         Self.currentDensity = density
-        // Mudança vinda de outro aparelho (iCloud KV) aplica na hora.
-        kvObserver = NotificationCenter.default.addObserver(
-            forName: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
-            object: kv, queue: .main) { [weak self] _ in
-                guard let self else { return }
-                let kv = NSUbiquitousKeyValueStore.default
-                if let raw = kv.string(forKey: Self.themeKey),
-                   let t = AppTheme(rawValue: raw), t != self.theme {
-                    self.theme = t
-                }
-                if let raw = kv.string(forKey: Self.densityKey),
-                   let d = AppDensity(rawValue: raw), d != self.density {
-                    self.density = d
-                }
-            }
     }
 
     private func persist() {
         UserDefaults.standard.set(theme.rawValue, forKey: Self.themeKey)
         UserDefaults.standard.set(density.rawValue, forKey: Self.densityKey)
-        let kv = NSUbiquitousKeyValueStore.default
-        kv.set(theme.rawValue, forKey: Self.themeKey)
-        kv.set(density.rawValue, forKey: Self.densityKey)
-        kv.synchronize()
     }
 }
 
